@@ -604,6 +604,48 @@
       S.signals.forEach(function (s) { if (!pool[s.user_id]) return; (s.signals || []).forEach(function (x) { cnt[x.k] = (cnt[x.k] || 0) + 1; tot++; }); });
       return Promise.resolve(Object.keys(cnt).map(function (k) { return { signal: k, n: cnt[k], pct: Math.round(1000 * cnt[k] / tot) / 10 }; }).sort(function (a, b) { return b.n - a.n; }));
     },
+    /* แนวโน้มรายเดือน — นับจากชุดข้อมูลสาธิตชุดเดียวกัน ด้วยกฎเดียวกับ view
+       insurer_monthly ทุกเดือนคืนแถวเสมอแม้ไม่มีข้อมูล กราฟจะได้มีแกนเวลาต่อเนื่อง */
+    insurerMonthly: function () {
+      var pool = {}; S.members.forEach(function (m) { if (m.share_pool) pool[m.id] = 1; });
+      var key = function (iso) { var d = new Date(iso); return d.getFullYear() + "-" + pad(d.getMonth() + 1, 2) + "-01"; };
+      var rows = {}, order = [];
+      var now = new Date();
+      for (var i = 11; i >= 0; i--) {
+        var d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        var k = d.getFullYear() + "-" + pad(d.getMonth() + 1, 2) + "-01";
+        rows[k] = { month: k, n_assessments: 0, n_first_assessments: 0, n_members_assessed: 0,
+          lv_stable: 0, lv_watch: 0, lv_decline: 0, lv_urgent: 0,
+          n_cases_opened: 0, n_cases_contacted: 0, n_contacted_in_sla: 0, _seen: {} };
+        order.push(k);
+      }
+      /* ลำดับครั้งที่ประเมินคิดจากประวัติทั้งหมดของคนนั้น เหมือน row_number() ใน view */
+      var byUser = {};
+      S.assess.forEach(function (a) { if (!pool[a.user_id]) return; (byUser[a.user_id] = byUser[a.user_id] || []).push(a); });
+      Object.keys(byUser).forEach(function (uid) {
+        byUser[uid].sort(byTime("assessed_at")).forEach(function (a, ix) {
+          var r = rows[key(a.assessed_at)]; if (!r) return;
+          r.n_assessments++;
+          if (ix === 0) r.n_first_assessments++;
+          if (!r._seen[uid]) { r._seen[uid] = 1; r.n_members_assessed++; }
+        });
+      });
+      S.signals.forEach(function (g) {
+        if (!pool[g.user_id]) return;
+        var r = rows[key(g.created_at)]; if (!r) return;
+        if (r["lv_" + g.level] !== undefined) r["lv_" + g.level]++;
+      });
+      S.cases.forEach(function (c) {
+        if (!pool[c.user_id]) return;
+        var r = rows[key(c.opened_at)]; if (!r) return;
+        r.n_cases_opened++;
+        if (c.contacted_at) {
+          r.n_cases_contacted++;
+          if (new Date(c.contacted_at).getTime() <= new Date(c.opened_at).getTime() + (c.sla_hours || 0) * H) r.n_contacted_in_sla++;
+        }
+      });
+      return Promise.resolve(order.map(function (k) { var r = rows[k]; delete r._seen; return r; }));
+    },
     insurerOutcomes: function () {
       var pool = {}, n = 0; S.members.forEach(function (m) { if (m.share_pool) { pool[m.id] = 1; n++; } });
       var as = S.assess.filter(function (a) { return pool[a.user_id]; }), now = Date.now();

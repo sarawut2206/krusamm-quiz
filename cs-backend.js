@@ -705,6 +705,16 @@ var CSBackend = (function () {
     var r = await sb.from("insurer_signals").select("*");
     return r.data || [];
   }
+  /* แนวโน้มรายเดือน 12 เดือน — view 21_insurer_trend.sql
+     ถ้ายังไม่ได้รันไฟล์นั้น view จะไม่มี และ Supabase คืน error
+     กรณีนี้คืนอาร์เรย์ว่าง ให้แดชบอร์ดขึ้นสถานะ "ยังไม่มีข้อมูลย้อนหลัง"
+     แทนที่จะพังทั้งหน้า */
+  async function insurerMonthly() {
+    if (!isCloud()) return [];
+    var r = await sb.from("insurer_monthly").select("*").order("month", { ascending: true });
+    if (r.error) { console.warn("insurer_monthly:", r.error.message); return []; }
+    return r.data || [];
+  }
 
   /* ============================================================
      ยา — Medication Classification Pipeline
@@ -1353,6 +1363,7 @@ var CSBackend = (function () {
     forcePasswordReset: forcePasswordReset, staffEmail: staffEmail,
     createReferralFor: createReferralFor,
     insurerFunnel: insurerFunnel, insurerStrata: insurerStrata, insurerSignals: insurerSignals,
+    insurerMonthly: insurerMonthly,
     listMeds: listMeds, saveMed: saveMed, retireMed: retireMed,
     uploadMedPhoto: uploadMedPhoto, medPhotoUrl: medPhotoUrl, myMedReview: myMedReview,
     lookupDrug: lookupDrug, queueUnknownDrug: queueUnknownDrug,
