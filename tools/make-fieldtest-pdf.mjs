@@ -19,21 +19,19 @@
 import { writeFileSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { readTTF } from "./ttf.mjs";
-import { DocPage, buildDoc, C, MM } from "./doc.mjs";
+import { buildDoc, C, MM } from "./doc.mjs";
+import * as F0 from "./form.mjs";
+import { M, W, mm, SINK, h2, para, field, tick, grid, writeBox, callout } from "./form.mjs";
 
 const REG = process.env.CS_FONT || "C:/Windows/Fonts/leelawad.ttf";
 const BOLD = process.env.CS_FONT_BOLD || "C:/Windows/Fonts/leelawdb.ttf";
 const OUT = new URL("../CareSignal-FieldTest.pdf", import.meta.url);
 const TITLE = "ชุดทดสอบภาคสนาม CareSignal";
 
-const M = 12;                 /* ขอบกระดาษ มม. */
-const W = 210 - 2 * M;        /* ความกว้างใช้งาน 186 มม. */
-const mm = (v) => v * MM;
-
 export const PAGES = [];      /* ชื่อหน้า ใช้ในเทสต์และในคำสั่งพิมพ์ */
-let TEXT = [];
 export let KIT_TEXT = "";
-const rec = (s) => { if (s) TEXT.push(String(s)); };
+const FOOT = "CareSignal · แบบบันทึกทดสอบภาคสนาม · ไม่ใช่เอกสารทางการแพทย์ และไม่ใช้ตัดสินสิทธิ์ใด ๆ";
+const newPage = (fonts, title, sub, nOf) => F0.newPage(fonts, title, sub, nOf, FOOT);
 
 /* ---------- ค่าที่ต้องตรงกับระบบ อ่านจากไฟล์จริงตอนสร้าง ---------- */
 export function facts() {
@@ -45,112 +43,6 @@ export function facts() {
   const stops = [...app.matchAll(/\{ k: "[a-z]+",\s+nm: "([^"]+)" \}/g)].map((m) => m[1]);
   const cut = app.match(/10\.0\/11\.5\/12\.1/) ? "10.0 / 11.5 / 12.1" : null;
   return { cols, stances, stops, cut };
-}
-
-/* ============================================================
-   ชิ้นส่วนของแบบฟอร์ม
-   ============================================================ */
-function newPage(fonts, title, sub, nOf) {
-  const p = new DocPage(fonts);
-  p.rect(0, mm(297 - 20), mm(210), mm(20), C.brand2);
-  p.text(title, mm(M), mm(297 - 12.5), 14, C.white, "l", true);
-  if (sub) p.text(sub, mm(M), mm(297 - 17.5), 8.5, [0.78, 0.85, 0.95]);
-  if (nOf) p.text(nOf, mm(210 - M), mm(297 - 12.5), 9, [0.78, 0.85, 0.95], "r");
-  p.rect(0, mm(297 - 20.8), mm(210), mm(0.8), C.c3);
-  p.text("CareSignal · แบบบันทึกทดสอบภาคสนาม · ไม่ใช่เอกสารทางการแพทย์ และไม่ใช้ตัดสินสิทธิ์ใด ๆ",
-         mm(105), mm(8), 7.5, C.ink3, "c");
-  rec(title); rec(sub);
-  return p;
-}
-
-/** หัวข้อย่อยพร้อมแถบสีน้ำเงินด้านหน้า คืน y ถัดไป */
-function h2(p, y, t) {
-  p.rect(mm(M), mm(y - 5.6), mm(1.4), mm(6.4), C.brand);
-  p.text(t, mm(M + 4), mm(y - 4.3), 11.5, C.brand2, "l", true);
-  rec(t);
-  return y - 10;
-}
-
-/** บรรทัดข้อความธรรมดา คืน y ถัดไป */
-function para(p, y, t, size, color) {
-  const s = size || 9.5;
-  const lines = p.wrap(t, s, mm(W));
-  lines.forEach((ln, i) => p.text(ln, mm(M), mm(y - 3.4 - i * 4.6), s, color || C.ink2));
-  rec(t);
-  return y - lines.length * 4.6 - 2;
-}
-
-/** ช่องเขียนแบบเส้นบรรทัด: [ป้ายกำกับ] ______ (หน่วย) */
-function field(p, x, y, w, label, unit, labelW) {
-  const lw = labelW == null ? p.textWidth(label, 9, false) / MM + 2 : labelW;
-  p.text(label, mm(x), mm(y), 9, C.ink2);
-  const x0 = x + lw, x1 = x + w - (unit ? p.textWidth(unit, 9) / MM + 2 : 0);
-  p.line(mm(x0), mm(y - 1.2), mm(x1), mm(y - 1.2), 0.5, C.ink3);
-  if (unit) p.text(unit, mm(x1 + 1.5), mm(y), 9, C.ink2);
-  rec(label);
-}
-
-/** ช่องติ๊ก — วาดเป็นสี่เหลี่ยมเปล่า ไม่ใช้เครื่องหมายถูกเพราะฟอนต์ไม่มี */
-function tick(p, x, y, label, size) {
-  const s = size || 3.6;
-  p.frame(mm(x), mm(y - 0.6), mm(s), mm(s), 0.5, C.ink3);
-  if (label) { p.text(label, mm(x + s + 2), mm(y), 9, C.ink2); rec(label); }
-  return p.textWidth(label || "", 9) / MM + s + 4;
-}
-
-/** ตารางฟอร์ม: หัวเทา แถวว่างให้เขียน คืน y ถัดไป
-    cols = [{t, w}] · rows = จำนวนแถวว่าง หรืออาเรย์ของข้อความในคอลัมน์แรก */
-function grid(p, y, cols, rows, rowH, headH) {
-  const hh = headH || 7, rh = rowH || 8;
-  const n = Array.isArray(rows) ? rows.length : rows;
-  const total = cols.reduce((a, c) => a + c.w, 0);
-  p.rect(mm(M), mm(y - hh), mm(total), mm(hh), C.surf2);
-  let x = M;
-  cols.forEach((c) => {
-    const lines = p.wrap(c.t, 8, mm(c.w - 3), true);
-    lines.forEach((ln, i) => p.text(ln, mm(x + 1.6), mm(y - 3.2 - i * 3.4 - (lines.length > 1 ? 0 : 1)), 8, C.ink2, "l", true));
-    rec(c.t);
-    x += c.w;
-  });
-  for (let r = 0; r < n; r++) {
-    const yy = y - hh - r * rh;
-    if (Array.isArray(rows) && rows[r]) {
-      p.text(rows[r], mm(M + 1.6), mm(yy - rh + 2.8), 8.5, C.ink);
-      rec(rows[r]);
-    }
-    p.line(mm(M), mm(yy - rh), mm(M + total), mm(yy - rh), 0.4, C.line);
-  }
-  /* เส้นตั้ง วาดทีเดียวตลอดความสูง */
-  x = M;
-  const bot = y - hh - n * rh;
-  [0].concat(cols.map((c) => (x += c.w) - M)).forEach((dx) =>
-    p.line(mm(M + dx), mm(y), mm(M + dx), mm(bot), 0.4, C.line));
-  p.line(mm(M), mm(y), mm(M + total), mm(y), 0.4, C.line);
-  p.line(mm(M), mm(y - hh), mm(M + total), mm(y - hh), 0.5, C.ink3);
-  return bot - 4;
-}
-
-/** กล่องเขียนอิสระพร้อมเส้นบรรทัดจาง */
-function writeBox(p, y, h, label, lines) {
-  if (label) { p.text(label, mm(M), mm(y), 9.5, C.ink2, "l", true); rec(label); y -= 4.5; }
-  p.frame(mm(M), mm(y - h), mm(W), mm(h), 0.5, C.line);
-  const n = lines || Math.floor(h / 8);
-  for (let i = 1; i < n; i++)
-    p.line(mm(M + 3), mm(y - (h / n) * i), mm(M + W - 3), mm(y - (h / n) * i), 0.3, C.line2);
-  return y - h - 4;
-}
-
-function callout(p, y, kind, title, body) {
-  const bg = { warn: C.c3t, stop: C.c1t, ok: C.c4t, note: C.brandt }[kind] || C.brandt;
-  const bar = { warn: C.c3, stop: C.c1, ok: C.c4, note: C.brand }[kind] || C.brand;
-  const lines = p.wrap(body, 9, mm(W - 10));
-  const h = 7 + lines.length * 4.4 + 3;
-  p.rect(mm(M), mm(y - h), mm(W), mm(h), bg);
-  p.rect(mm(M), mm(y - h), mm(1.6), mm(h), bar);
-  p.text(title, mm(M + 5), mm(y - 5.4), 10, bar, "l", true);
-  lines.forEach((ln, i) => p.text(ln, mm(M + 5), mm(y - 10.4 - i * 4.4), 9, C.ink));
-  rec(title); rec(body);
-  return y - h - 5;
 }
 
 /* ============================================================
@@ -181,7 +73,7 @@ function pageHow(fonts, F) {
   /* คอลัมน์ที่สองเติมทีหลัง เพราะ grid เขียนได้เฉพาะคอลัมน์แรก */
   kit.forEach((k, i) => {
     const yy = y + 4 + (kit.length - i) * 8 - 5.2;
-    p.text(k[1], mm(M + 78 + 1.6), mm(yy), 8.5, C.ink2); rec(k[1]);
+    p.text(k[1], mm(M + 78 + 1.6), mm(yy), 8.5, C.ink2); SINK.add(k[1]);
   });
 
   y = h2(p, y, "ลำดับการทำงานในหนึ่งราย ใช้เวลาราว 25 นาที");
@@ -194,14 +86,7 @@ function pageHow(fonts, F) {
     "ให้ผู้เข้าร่วมตอบความเห็นหน้า 6 แล้วผู้เก็บข้อมูลเขียนข้อสังเกตของตนเอง",
     "ก่อนกลับ ตรวจเช็กลิสต์หน้า 7 ให้ครบทุกข้อ"
   ];
-  steps.forEach((s, i) => {
-    p.ellipse(mm(M + 3), mm(y - 2.2), mm(3), mm(3), 0, null, C.brand);
-    p.text(String(i + 1), mm(M + 3), mm(y - 3.3), 7, C.white, "c", true);
-    const lines = p.wrap(s, 9.5, mm(W - 10));
-    lines.forEach((ln, j) => p.text(ln, mm(M + 8), mm(y - 3.4 - j * 4.4), 9.5, C.ink2));
-    rec(s);
-    y -= lines.length * 4.4 + 2.2;
-  });
+  y = F0.steps(p, y, steps);
 
   y -= 2;
   callout(p, y, "stop", "กติกาความปลอดภัย ไม่มีข้อยกเว้น",
@@ -234,20 +119,16 @@ function pageConsent(fonts) {
                 "จำนวนครั้งที่ทำได้ และผลผ่านหรือไม่ผ่าน", "ความเห็นของท่านต่อการใช้งาน"];
   const drop = ["ชื่อ นามสกุล เลขบัตรประชาชน ที่อยู่", "ภาพนิ่งหรือวิดีโอจากกล้อง (ประมวลผลในเครื่องแล้วทิ้ง)",
                 "ข้อมูลสุขภาพหรือประวัติการรักษา", "หมายเลขโทรศัพท์", "ข้อมูลกรมธรรม์ประกันภัยใด ๆ"];
-  keep.forEach((t, i) => { p.text(t, mm(M + 2), mm(y + 4 + (5 - i) * 7.5 - 5), 8.5, C.ink2); rec(t); });
-  drop.forEach((t, i) => { p.text(t, mm(M + 95), mm(y + 4 + (5 - i) * 7.5 - 5), 8.5, C.ink2); rec(t); });
+  keep.forEach((t, i) => { p.text(t, mm(M + 2), mm(y + 4 + (5 - i) * 7.5 - 5), 8.5, C.ink2); SINK.add(t); });
+  drop.forEach((t, i) => { p.text(t, mm(M + 95), mm(y + 4 + (5 - i) * 7.5 - 5), 8.5, C.ink2); SINK.add(t); });
 
   y = h2(p, y, "สิทธิของท่าน");
-  ["เข้าร่วมหรือไม่เข้าร่วมก็ได้ และหยุดกลางคันได้ทุกเมื่อ",
+  const rights = ["เข้าร่วมหรือไม่เข้าร่วมก็ได้ และหยุดกลางคันได้ทุกเมื่อ",
    "ขอให้ลบข้อมูลของท่านได้ภายหลัง โดยแจ้งรหัสผู้เข้าร่วมกับทีมงาน",
    "การเข้าร่วมหรือไม่เข้าร่วม ไม่มีผลต่อสิทธิ์การรักษา สวัสดิการ หรือกรมธรรม์ประกันภัยใด ๆ ของท่าน",
    "ข้อมูลที่เก็บใช้เพื่อพัฒนาและตรวจสอบความแม่นยำของเครื่องมือเท่านั้น ไม่ส่งต่อให้บริษัทประกัน"
-  ].forEach((t) => {
-    p.ellipse(mm(M + 1.6), mm(y - 2.4), mm(0.9), mm(0.9), 0, null, C.brand);
-    const lines = p.wrap(t, 9.5, mm(W - 6));
-    lines.forEach((ln, j) => p.text(ln, mm(M + 5), mm(y - 3.4 - j * 4.4), 9.5, C.ink2));
-    rec(t); y -= lines.length * 4.4 + 1.4;
-  });
+  ];
+  y = F0.bullets(p, y, rights);
 
   y -= 4;
   y = h2(p, y, "คำยินยอม");
@@ -255,7 +136,7 @@ function pageConsent(fonts) {
   let yy = y - 7;
   const consent = "ข้าพเจ้าได้อ่านหรือรับฟังคำชี้แจงข้างต้นจนเข้าใจแล้ว และยินยอมเข้าร่วมการทดสอบนี้ด้วยความสมัครใจ";
   p.wrap(consent, 9.5, mm(W - 10)).forEach((ln, i) => p.text(ln, mm(M + 5), mm(yy - i * 4.6), 9.5, C.ink));
-  rec(consent);
+  SINK.add(consent);
   yy -= 12;
   field(p, M + 5, yy, 80, "รหัสผู้เข้าร่วม", "", 26);
   field(p, M + 95, yy, 80, "วันที่", "", 16);
@@ -429,7 +310,7 @@ function pageFeedback(fonts) {
       p.ellipse(mm(cx), mm(y - 3), mm(3), mm(3), 0.5, C.ink3, null);
       p.text(String(i), mm(cx), mm(y - 4.3), 8.5, C.ink2, "c");
     }
-    rec(q);
+    SINK.add(q);
     y -= Math.max(lines.length * 4.4, 8) + 2;
   });
   y -= 4;
@@ -462,7 +343,7 @@ function pageClose(fonts, F) {
     "แผ่นป้ายไม่ยับ ไม่เปียก เก็บใส่แฟ้มแข็ง ถ้ายับต้องพิมพ์ใหม่",
     "ลบข้อมูลที่บันทึกไว้ในเครื่องทดสอบ ถ้าเครื่องนั้นไม่ได้เป็นของผู้เข้าร่วม",
     "แจ้งผู้เข้าร่วมว่าถ้าต้องการให้ลบข้อมูลภายหลัง ให้ติดต่อใครและอย่างไร"
-  ].forEach((t) => { tick(p, M, y, t, 4); rec(t); y -= 7.4; });
+  ].forEach((t) => { tick(p, M, y, t, 4); SINK.add(t); y -= 7.4; });
   y -= 6;
 
   y = h2(p, y, "ช่องในกระดาษตรงกับคอลัมน์ไหนในระบบ");
@@ -486,7 +367,7 @@ function pageClose(fonts, F) {
     const yy = y + 4 + (map.length - i) * 7.5 - 5;
     p.text(r[1], mm(M + 98), mm(yy), 8.5, C.ink2);
     p.text(known.has(r[1]) ? "มี" : "ไม่พบ", mm(M + 160), mm(yy), 8.5, known.has(r[1]) ? C.c4 : C.c1, "l", true);
-    rec(r[1]);
+    SINK.add(r[1]);
   });
 
   y = callout(p, y, "stop", "ห้ามกรอกชื่อจริงเข้าระบบไม่ว่ากรณีใด",
@@ -501,12 +382,12 @@ function pageClose(fonts, F) {
 }
 
 export function buildKit() {
-  PAGES.length = 0; TEXT = [];
+  PAGES.length = 0; SINK.reset();
   const F = facts();
   const fonts = { reg: readTTF(REG), bold: readTTF(BOLD) };
   const pages = [pageHow(fonts, F), pageConsent(fonts), pageSetup(fonts),
                  pageTrials(fonts, F), pageBalance(fonts, F), pageFeedback(fonts), pageClose(fonts, F)];
-  KIT_TEXT = TEXT.join("\n");
+  KIT_TEXT = SINK.text();
   return { pdf: buildDoc(pages, fonts, { title: TITLE }), pages: pages.length, text: KIT_TEXT, facts: F };
 }
 
