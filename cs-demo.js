@@ -29,7 +29,7 @@
     doctor: "แพทย์", nurse: "พยาบาล", admin: "ผู้ดูแลระบบ", insurer: "บริษัทประกัน" };
   var role = ROLE_ALIAS[String(want).toLowerCase()] || "care_manager";
 
-  var STORE = "cs-demo-state-v2";   /* เปลี่ยนเลขรุ่นทุกครั้งที่รูปแบบข้อมูลเปลี่ยน แท็บที่เปิดค้างจะได้ไม่ใช้ข้อมูลรุ่นเก่า */
+  var STORE = "cs-demo-state-v3";   /* เปลี่ยนเลขรุ่นทุกครั้งที่รูปแบบข้อมูลเปลี่ยน แท็บที่เปิดค้างจะได้ไม่ใช้ข้อมูลรุ่นเก่า */
   var ORG = "โรงพยาบาลสาธิต (ข้อมูลสังเคราะห์)";
   var NOW = Date.now();
   var H = 3600e3, D = 24 * H;
@@ -206,6 +206,113 @@
       ["physio", "referral.update", "การส่งต่อเปลี่ยนสถานะเป็น review_returned", 120], ["admin", "invite.issue", "ออกรหัสให้ demo.nurse2 บทบาท nurse", 24 * 2], ["care_manager", "case.open", "เปิดดูรายละเอียดเคส", 5],
       ["insurer", "outcomes.view", "เปิดดูรายงานผลลัพธ์เชิงกลุ่ม", 24], ["doctor", "access.request", "ขอความยินยอมเปิดดูข้อมูลคลินิก", 26], ["care_manager", "referral.create", "ส่งต่อไปยัง physio · ประเมินการเดิน", 60]];
     AUD.forEach(function (a, ix) { var st = staffOf(a[0]); S.audit.push({ id: uuid(15, ix + 1), actor_id: st.id, actor_role: a[0], actor_name: st.display_name, action: a[1], subject_id: null, detail: a[2], meta: { demo: true }, created_at: ago(a[3]) }); });
+    /* ============================================================
+       เคสเดินเรื่อง DEMO-41 — คนเดียวเดินครบวงจรตั้งแต่ต้นจนจบ
+       ------------------------------------------------------------
+       ใช้กับหน้า CareSignal-Journey.html และปรากฏในคอนโซลทุกบทบาท
+       เป็นคนเดียวกัน: อยู่ในคิวงานของผู้ประสานงาน มีใบส่งต่อถึงแพทย์
+       เภสัชกร นักกายภาพบำบัด พยาบาล ครบสี่ใบพร้อมผลกลับ และเป็น 1 ราย
+       ที่ "ดีขึ้น" ในตัวเลขของบริษัทประกัน (ถดถอย → เฝ้าสังเกต)
+       เวลาทั้งหมดนับถอยหลังจากวันนี้ วันที่ 0 = ลูกสาวแจ้งเหตุเมื่อ 44 วันก่อน
+       ============================================================ */
+    (function flagship() {
+      var m = { id: uuid(1, 41), pseudonym: "DEMO-41", display_name: "สาธิต บุญเรือน", phone: "0800000041", carer_phone: "0890000041",
+        role: "user", birth_year_be: BE - 74, birth_month: 3, sex: "f", province: "เชียงใหม่", share_pool: true, username: null,
+        must_set_password: false, created_at: ago(24 * 60), level: "watch", flagship: true };
+      S.members.push(m);
+      /* วันที่ 0 · ลูกสาวแจ้งเหตุล้มในห้องน้ำ */
+      S.events.push({ id: uuid(13, 20), user_id: m.id, reporter_id: null, kind: "fall", detail: { by: "family", memberId: m.id, place: "ห้องน้ำ", time: "กลางคืน" }, severity: "medium", created_at: ago(24 * 44), handled_at: ago(24 * 42) });
+      /* วันที่ 2 · ประเมินครั้งที่ 1 — คะแนน 5/12 ระดับถดถอย */
+      S.assess.push({ id: uuid(2, 410), user_id: m.id, assessed_at: ago(24 * 42), method: "camera_aruco", ftsst_seconds: 14.1, tug_seconds: 15.2, reps: 5, cadence_cv: 0.183,
+        score: 5, score_max: 12, tier: 3, parts: { ftsst: 1, balance: 1, falls: 2, meds: 0, adl: 1 },
+        falls_detail: { falls12m: 1, injured: false, unconscious: false, cannot_rise: false },
+        meds_detail: { n: 4, high: 1 }, home_detail: { count: 3, alone: true },
+        balance_text: "เท้าชิดผ่าน · กึ่งต่อเท้าผ่าน · ต่อเท้า 6 วินาที ไม่ผ่าน · ขาเดียวไม่ทดสอบ (อยู่คนเดียว)", adl_text: "ต้องมีคนช่วยอาบน้ำ 17/20",
+        safety_gate: { ok: true, alone: true }, not_tested: false, engine_version: "2.1.0", identity_verified: true, created_at: ago(24 * 42) });
+      var k1 = ["S1", "S3", "S4", "S6"];
+      S.signals.push({ id: uuid(3, 410), user_id: m.id, assessment_id: uuid(2, 410), level: "decline",
+        flags: [{ id: "B7", text: "หกล้มครั้งใหม่ใน 12 เดือน" }, { id: "B13", text: "ยากลุ่มเสี่ยงสูง 1 รายการ และยาที่ระบุตัวไม่ได้ 1 รายการ" }, { id: "B9", text: "ลุกนั่ง 5 ครั้ง 14.1 วินาที เกินเกณฑ์อายุ 12.1" }, { id: "B11", text: "ต้องมีคนช่วยอาบน้ำ" }],
+        signals: k1.map(sig), next_days: 21, engine_version: "2.1.0", created_at: ago(24 * 42) });
+      /* ยา 4 รายการที่ถ่ายฉลาก — ยานอนหลับถูกหยุดตามแผนแพทย์ในภายหลัง */
+      med(10, m.id, "lorazepam", "ยานอนหลับ (สาธิต)", "bzd", 2, "0.5 มก. ก่อนนอน");
+      med(11, m.id, "amlodipine", "ยาความดัน (สาธิต)", "antihtn", 1, "5 มก. เช้า");
+      med(12, m.id, "metformin", "ยาเบาหวาน (สาธิต)", "none", 0, "500 มก. เช้า-เย็น");
+      med(13, m.id, null, "ยาสมุนไพรตราสาธิต", "unknown", null, "1 แคปซูล");
+      S.meds.forEach(function (x) { if (x.id === uuid(6, 10)) { x.active = false; x.reviewed_at = ago(24 * 6); x.reviewed_by = staffOf("doctor").id; x.review_note = "หยุดตามแผนแพทย์ ลดครึ่งหนึ่ง 2 สัปดาห์แล้วหยุด"; x.updated_at = ago(24 * 6); } });
+      /* เคส — เปิดอัตโนมัติ ติดต่อได้ใน 20 ชั่วโมง ตอนนี้รับบริการครบ รอปิด */
+      S.cases.push({ id: uuid(4, 41), user_id: m.id, risk_signal_id: uuid(3, 410), level: "decline", signals: k1.map(sig), status: "service_completed",
+        assigned_to: staffOf("care_manager").id, sla_hours: 48, opened_at: ago(24 * 42), due_at: ago(24 * 40), contacted_at: ago(24 * 42 - 20), attempts: 1, unreachable: false,
+        next_action: "ยืนยันกับครอบครัวแล้วปิดเคส · นัดประเมินซ้ำ 45 วัน", closed_at: null, close_reason: null, note: "เคสเดินเรื่องสำหรับเดโม", updated_at: ago(24 * 4) });
+      var CTF = [[24 * 42 - 20, "phone", "reached", "ลูกสาวรับสาย เล่าว่าล้มในห้องน้ำกลางคืน ยินยอมส่งข้อมูลถึงผู้เชี่ยวชาญ"],
+        [24 * 40 + 2, "phone", "plan_confirmed", "ตกลงแผนเบื้องต้น: ไม่เข้าห้องน้ำคนเดียวตอนกลางคืนจนกว่าจะติดราวจับ"],
+        [24 * 31, "phone", "plan_confirmed", "รวมผลจากผู้เชี่ยวชาญสี่คน ตกลงแผนดูแล 5 ข้อกับลูกสาว"],
+        [24 * 24, "phone", "reached", "ฝึกลุกนั่งได้วันเว้นวัน ราวจับติดตั้งแล้ว"],
+        [24 * 17, "phone", "reached", "ลดยานอนหลับตามแพทย์ นอนหลับได้ ไม่เวียนศีรษะ"],
+        [24 * 10, "phone", "reached", "ไม่มีล้มหรือเกือบล้มตลอด 3 สัปดาห์ นัดประเมินซ้ำ"]];
+      CTF.forEach(function (c, ix) { S.contacts.push({ id: uuid(12, 20 + ix), case_id: uuid(4, 41), user_id: m.id, by_staff: staffOf("care_manager").id, channel: c[1], result: c[2], note: c[3], created_at: ago(c[0]) }); });
+      /* ส่งต่อ 4 ทางในวันที่ 4 — ผลกลับครบ และบันทึกผลหลังรับบริการแล้วทุกใบ */
+      var made = NOW - 24 * 40 * H;
+      var RF = [
+        ["pharmacist", 7, 3, null, 24 * 37, 24 * 37, "ทบทวนยา 4 รายการ มียานอนหลับกลุ่มเสี่ยงสูงและยาสมุนไพรที่ระบุตัวไม่ได้",
+          ["ยารายการใดเพิ่มความเสี่ยงหกล้ม และควรทบทวนกับแพทย์ผู้สั่งยา", "ยาสมุนไพรที่อ่านฉลากไม่ได้ควรทำอย่างไร"],
+          { finding: "ใช้ lorazepam 0.5 มก. ทุกคืนต่อเนื่อง 2 ปี ร่วมกับยาลดความดัน · ยาสมุนไพรระบุส่วนผสมไม่ได้", recommend: "เสนอแพทย์ผู้สั่งยาพิจารณาลด lorazepam แบบค่อยเป็นค่อยไป ไม่หยุดทันที · ทบทวนเวลาให้ยาความดัน · หยุดยาสมุนไพรจนกว่าจะทราบส่วนผสม", next_step: "refer_doctor", note: "ไม่พบปฏิกิริยาระหว่างยาที่ต้องหยุดฉุกเฉิน" },
+          { result: "improved", recorded_at: ago(24 * 33), note: "แพทย์รับเรื่องต่อและปรับแผนยาแล้ว" }],
+        ["doctor", 8, 6, 24 * 35, 24 * 33, 24 * 33, "ทบทวนสาเหตุการล้มครั้งใหม่ และแผนยาตามที่เภสัชกรเสนอ",
+          ["การล้มมีสาเหตุจากความดัน หัวใจ หรือระบบประสาทหรือไม่", "ควรลดยานอนหลับอย่างไร"],
+          { finding: "ความดันตกเมื่อลุกยืน 24/10 มม.ปรอท · ไม่มีอาการทางหัวใจ · ไม่มีสัญญาณระบบประสาท · การล้มสัมพันธ์กับลุกเข้าห้องน้ำกลางคืนหลังกินยานอนหลับ", recommend: "ลด lorazepam ลงครึ่งหนึ่ง 2 สัปดาห์แล้วหยุด · ย้ายยาความดันเป็นก่อนนอน · ลุกจากเตียงช้า ๆ นั่งขอบเตียง 1 นาทีก่อนยืน", next_step: "follow_plan", note: "นัดติดตาม 4 สัปดาห์" },
+          { result: "improved", recorded_at: ago(24 * 6), note: "หยุดยานอนหลับได้ ไม่มีอาการเวียนศีรษะ" }],
+        ["physio", 9, 5, 24 * 36, 24 * 6, 24 * 34, "ประเมินกำลังขาและการทรงตัว กำหนดโปรแกรมฝึกที่บ้าน",
+          ["ควรเริ่มโปรแกรมฝึกแบบใด", "ต้องใช้อุปกรณ์ช่วยเดินหรือไม่"],
+          { finding: "ลุกนั่ง 5 ครั้ง 14.1 วินาที · ยืนต่อเท้าได้ 6 วินาที · กำลังขาซ้ายอ่อนกว่าขวา · เดินความเร็วปกติ ไม่ต้องใช้อุปกรณ์ช่วยเดิน", recommend: "ฝึกลุกนั่งจากเก้าอี้ 10 ครั้ง × 3 รอบ วันเว้นวัน · ยืนต่อเท้าจับโต๊ะ 30 วินาที × 3 · เดินยกเข่าในบ้าน 5 นาทีทุกวัน นาน 4 สัปดาห์", next_step: "follow_plan", note: "สอนลูกสาวให้ดูท่าและนับครั้ง" },
+          { result: "improved", recorded_at: ago(24 * 5), note: "ทำครบ 4 สัปดาห์ ลุกนั่งเร็วขึ้น 2.5 วินาที" }],
+        ["nurse", 10, 4, 24 * 34, 24 * 32, 24 * 32, "ประเมินภาวะพึ่งพิงและความปลอดภัยในบ้าน วางแผนร่วมกับครอบครัว",
+          ["ครอบครัวต้องการอุปกรณ์ช่วยอะไรบ้าง", "ช่วงเวลาไหนที่ไม่มีคนอยู่ด้วย"],
+          { finding: "ต้องมีคนช่วยอาบน้ำ · พื้นห้องน้ำลื่นไม่มีราวจับ · ไม่มีไฟทางเดินกลางคืน · ลูกสาวอยู่ด้วยเฉพาะช่วงเย็น", recommend: "ติดราวจับข้างชักโครกและในที่อาบน้ำ · เก้าอี้อาบน้ำ · ไฟกลางคืนแบบเซ็นเซอร์ · ให้ลูกสาวช่วยอาบน้ำช่วงเย็น", next_step: "sufficient", note: "ประสานหน่วยบริการปฐมภูมิติดตั้งอุปกรณ์" },
+          { result: "improved", recorded_at: ago(24 * 30), note: "ติดตั้งราวจับ เก้าอี้อาบน้ำ และไฟกลางคืนแล้ว" }]
+      ];
+      RF.forEach(function (x) {
+        S.refs.push({ id: uuid(5, x[1]), user_id: m.id, case_id: uuid(4, 41), risk_signal_id: uuid(3, 410), level: "decline", destination: x[0],
+          action: x[6], sla: "ตามระดับความเร่งด่วน", reasons: S.signals[S.signals.length - 1].flags, questions: x[7], status: "outcome_recorded",
+          reply_due: iso(made + 48 * H), package: pkg(m), assigned_to: staffOf(x[0]).id, decided_by: null, decided_at: null, decision_note: null,
+          acknowledged_at: iso(made + x[2] * H), booked_at: x[3] == null ? null : ago(x[3]), completed_at: ago(x[4]), completed_note: null,
+          outcome: x[9], review: x[8], reviewed_at: ago(x[5]), created_at: iso(made) });
+      });
+      S.medrev.push({ id: uuid(7, 4), user_id: m.id, case_id: uuid(4, 41), referral_id: uuid(5, 7), requested_at: ago(24 * 42), reason: "ยา 4 รายการ มียากลุ่มเสี่ยงสูง 1 และระบุตัวไม่ได้ 1",
+        summary: { high: 1, mod: 1, unknown: 1, total: 4 }, status: "done", reviewed_at: ago(24 * 37), reviewed_by: staffOf("pharmacist").id, outcome: "consult_doctor", recommend: RF[0][8].recommend });
+      /* แผนดูแลที่รวมผลจากผู้เชี่ยวชาญสี่คน และการติดตามรายสัปดาห์ */
+      S.plans.push({ id: uuid(10, 41), user_id: m.id, assessment_id: uuid(2, 410), level: "decline", items: [
+        { id: "P1", nm: "ลดยานอนหลับตามแผนแพทย์ (ครึ่งหนึ่ง 2 สัปดาห์แล้วหยุด) ย้ายยาความดันเป็นก่อนนอน", done: true },
+        { id: "P2", nm: "ฝึกลุกนั่งจากเก้าอี้ 10 ครั้ง × 3 รอบ วันเว้นวัน และยืนต่อเท้าจับโต๊ะ", done: true },
+        { id: "P3", nm: "ติดราวจับห้องน้ำ เก้าอี้อาบน้ำ และไฟกลางคืนแบบเซ็นเซอร์", done: true },
+        { id: "P4", nm: "ลูกสาวช่วยอาบน้ำช่วงเย็น ไม่เข้าห้องน้ำคนเดียวตอนกลางคืน", done: true },
+        { id: "P5", nm: "ประเมินซ้ำที่บ้านใน 21 วัน", done: true }], due_at: ago(24 * 5), created_at: ago(24 * 31) });
+      [[410, "โทรติดตามการฝึก", 24 * 24, "done", "ฝึกได้ ราวจับติดแล้ว"], [411, "โทรติดตามการฝึก", 24 * 17, "done", "ลดยานอนหลับตามแพทย์"],
+       [412, "โทรติดตามการฝึก", 24 * 10, "done", "ไม่มีล้ม"], [413, "นัดประเมินซ้ำ", 24 * 5, "done", "ประเมินซ้ำแล้ว คะแนน 9/12"],
+       [414, "นัดประเมินซ้ำ", -24 * 45, "pending", null]].forEach(function (f) {
+        S.fups.push({ id: uuid(11, f[0]), user_id: m.id, plan_id: uuid(10, 41), kind: f[1], due_at: ago(f[2]), status: f[3], done_at: f[3] === "done" ? ago(f[2]) : null, note: f[4] });
+      });
+      /* วันที่ 39 · ประเมินซ้ำ — 9/12 ระดับเฝ้าสังเกต ประเมินซ้ำถัดไป 45 วัน */
+      S.assess.push({ id: uuid(2, 411), user_id: m.id, assessed_at: ago(24 * 5), method: "camera_aruco", ftsst_seconds: 11.6, tug_seconds: 12.4, reps: 5, cadence_cv: 0.121,
+        score: 9, score_max: 12, tier: 2, parts: { ftsst: 2, balance: 2, falls: 2, meds: 1, adl: 2 },
+        falls_detail: { falls12m: 1, injured: false, unconscious: false, cannot_rise: false },
+        meds_detail: { n: 3, high: 0 }, home_detail: { count: 1, alone: true },
+        balance_text: "เท้าชิดผ่าน · กึ่งต่อเท้าผ่าน · ต่อเท้า 10 วินาที ผ่าน · ขาเดียวไม่ทดสอบ (อยู่คนเดียว)", adl_text: "อาบน้ำเองได้เมื่อมีเก้าอี้และราวจับ 19/20",
+        safety_gate: { ok: true, alone: true }, not_tested: false, engine_version: "2.1.0", identity_verified: true, created_at: ago(24 * 5) });
+      S.signals.push({ id: uuid(3, 411), user_id: m.id, assessment_id: uuid(2, 411), level: "watch", flags: [{ id: "B7", text: "หกล้มใน 12 เดือน 1 ครั้ง (ยังนับอยู่)" }],
+        signals: [], next_days: 45, engine_version: "2.1.0", created_at: ago(24 * 5) });
+      /* บันทึกตรวจสอบของเคสนี้ */
+      [["care_manager", "contact.log", "บันทึกการติดต่อ DEMO-41: reached · ลูกสาวรับสาย", 24 * 42 - 20],
+       ["care_manager", "referral.send", "ส่งต่อ DEMO-41 ถึง pharmacist · doctor · physio · nurse", 24 * 40],
+       ["pharmacist", "referral.review", "ส่งผลทบทวนยา DEMO-41 กลับ · แนะนำพบแพทย์", 24 * 37],
+       ["physio", "referral.review", "ส่งผลประเมิน DEMO-41 กลับ · โปรแกรมฝึก 4 สัปดาห์", 24 * 34],
+       ["doctor", "referral.review", "ส่งผลตรวจ DEMO-41 กลับ · ลดยานอนหลับ", 24 * 33],
+       ["nurse", "referral.review", "ส่งผลเยี่ยมบ้าน DEMO-41 กลับ · ราวจับและเก้าอี้อาบน้ำ", 24 * 32],
+       ["care_manager", "case.update", "เคส DEMO-41 เปลี่ยนสถานะเป็น care_plan_agreed", 24 * 31],
+       ["care_manager", "case.update", "เคส DEMO-41 เปลี่ยนสถานะเป็น service_completed", 24 * 4]].forEach(function (a, ix) {
+        var st = staffOf(a[0]);
+        S.audit.push({ id: uuid(15, 60 + ix), actor_id: st.id, actor_role: a[0], actor_name: st.display_name, action: a[1], subject_id: uuid(4, 41), detail: a[2], meta: { demo: true }, created_at: ago(a[3]) });
+      });
+    })();
     return S;
   }
 
