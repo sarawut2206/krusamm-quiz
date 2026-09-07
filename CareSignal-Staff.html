@@ -2532,7 +2532,37 @@ async function referV(){
           return (isClinician()&&!r.review?'<button class="pri claim" data-review="'+esc(r.id)+'">ส่งผลทบทวนกลับ</button>':'—')}}
       ]})+'</div>';
 
-  V.innerHTML=orgBarHTML()+pipe+destHTML+listHTML;
+  /* ---- รายการที่ปิดแล้ว: ผู้เชี่ยวชาญต้องย้อนดูผลที่ตนส่งกลับได้ และลิงก์ตรง (#ref=)
+          จากใบส่งต่อที่ปิดแล้วต้องหาเจอ ไม่ใช่บอกว่า "ไม่พบเคส" ทั้งที่มีอยู่ ---- */
+  var closed=rows.filter(function(r){return ["outcome_recorded","declined"].indexOf(r.status)>=0});
+  var RES_NM={improved:"ดีขึ้น",same:"เท่าเดิม",worse:"แย่ลง"};
+  closed.forEach(function(r){
+    var pr=r.profiles||{}; r._ps=pr.pseudonym||""; r._nm=pr.display_name||""; r._dest=DEST_NM[r.destination||r.referral_type]||r.destination||r.referral_type||"—";
+    r._st=r.status==="declined"?REF_END.declined:"บันทึกผลแล้ว"; r._res=r.outcome?(RES_NM[r.outcome.result]||r.outcome.result):"—";
+    r._when=r.reviewed_at||r.completed_at||r.created_at||""; });
+  var focusClosed=!!(ST.focusRef&&closed.some(function(r){return r.id===ST.focusRef}));
+  var closedHTML=closed.length?'<details class="wide" id="refClosed"'+(focusClosed?' open':'')+'>'+
+    '<summary style="cursor:pointer;margin:14px 0 8px;font-weight:600">รายการที่ปิดแล้ว ('+closed.length+') — ผลที่ส่งกลับและผลหลังรับบริการ</summary>'+
+    dashTable({id:"referClosed",rows:closed,sort:{k:"_when",dir:"desc"},empty:"ยังไม่มีรายการที่ปิด",rowKey:function(r){return r.id},
+      rowAttr:function(r){return 'data-ref="'+esc(r.id)+'"'},
+      detail:function(r){var v=r.review; if(!v&&!r.outcome)return null;
+        return '<div class="rv"><b>ผลที่ส่งกลับ'+(r.reviewed_at?' · '+esc(thDate(r.reviewed_at)):'')+'</b>'+
+          (v?'<div class="row"><span>ข้อค้นพบ</span><span>'+esc(v.finding||"—")+'</span></div>'+
+             '<div class="row"><span>คำแนะนำ</span><span>'+esc(v.recommend||"—")+'</span></div>'+
+             '<div class="row"><span>ขั้นตอนถัดไป</span><span>'+esc(NEXT_NM[v.next_step]||v.next_step||"—")+'</span></div>'+
+             (v.note?'<div class="row"><span>หมายเหตุ</span><span>'+esc(v.note)+'</span></div>':''):'')+
+          (r.outcome?'<div class="row"><span>ผลหลังรับบริการ</span><span>'+esc(r._res)+(r.outcome.note?' — '+esc(r.outcome.note):'')+'</span></div>':'')+'</div>'},
+      cols:[
+        {k:"_ps",label:"รหัส",cls:"id"},
+        {k:"_nm",label:"ผู้เอาประกัน"},
+        {k:"_dest",label:"ปลายทาง"},
+        {k:"_st",label:"สถานะ"},
+        {k:"_res",label:"ผลหลังรับบริการ"},
+        {k:"_when",label:"ส่งผลเมื่อ",search:false,render:function(r){return esc(thDate(r._when))}},
+        {k:"act",label:"",sort:false,search:false,cls:"act",render:function(r){return (r.review||r.outcome)?'<button class="ghostb" data-toggle="'+esc(r.id)+'">ดูผล</button>':'—'}}
+      ]})+'</details>':'';
+
+  V.innerHTML=orgBarHTML()+pipe+destHTML+listHTML+closedHTML;
   bindOrgBar();
   function rebind(){
     V.querySelectorAll("[data-review]").forEach(function(b){
@@ -2547,6 +2577,8 @@ async function referV(){
   if(ST.focusRef){
     var row=V.querySelector('[data-ref="'+ST.focusRef+'"]');
     if(row){
+      var det=row.closest("details"); if(det)det.open=true;
+      var tg=row.querySelector("[data-toggle]"); if(tg)tg.click();   /* ใบที่ปิดแล้ว: กางผลที่ส่งกลับให้เลย */
       row.style.cssText="outline:2px solid var(--brand);outline-offset:2px;border-radius:8px";
       row.scrollIntoView({block:"center"});
       toast("เปิดจากลิงก์ที่ได้รับ — เคสนี้อยู่ในรายการด้านล่าง");
@@ -2699,7 +2731,8 @@ V.addEventListener("click",function(e){
    รูปแบบ: ...CareSignal-Staff.html#ref=<รหัสรายการส่งต่อ>
    ============================================================ */
 function deepLink(){
-  var m=(location.hash||"").match(/ref=([0-9a-f-]{8,})/i);
+  /* รับรหัสสาธิต (0000dem0-…) ด้วย ไม่ใช่เฉพาะเลขฐานสิบหก */
+  var m=(location.hash||"").match(/ref=([0-9a-z-]{8,})/i);
   return m?m[1]:null;
 }
 /* บัญชีบริษัทประกันเห็นเฉพาะภาพรวมระดับกลุ่ม — ซ่อนเมนูรายบุคคลไว้ตั้งแต่แรก
