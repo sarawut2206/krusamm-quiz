@@ -2,7 +2,7 @@
    make-marker-pdf.mjs — สร้างแผ่นป้าย ArUco สำหรับพิมพ์
    ------------------------------------------------------------
    รันด้วย:  node tools/make-marker-pdf.mjs
-   ผลลัพธ์:  CareSignal-markers.pdf  (A4 สี่หน้า)
+   ผลลัพธ์:  CareSignal-markers.pdf  (A4 หกหน้า)
 
    ป้ายทุกใบวาดจากพจนานุกรมตัวเดียวกับที่ cs-aruco.js ใช้อ่าน
    ถ้าพจนานุกรมเปลี่ยน แผ่นที่พิมพ์ก็เปลี่ยนตาม จึงไม่มีทางที่แผ่นกับ
@@ -60,23 +60,43 @@ export function markerRects(id, x, y, codeMM) {
   return { rects: out, total: total };
 }
 
-function marker(pg, id, x, y, codeMM) {
+/* วาดเฉพาะตัวป้าย ไม่มีเส้นตัด — ผู้เรียกเป็นคนกำหนดขอบเขตการ์ดเอง */
+function markerOnly(pg, id, x, y, codeMM) {
   const { rects, total } = markerRects(id, x, y, codeMM);
   for (const r of rects) pg.rect(mm(r.x), mm(r.y), mm(r.w), mm(r.h), r.white ? 1 : 0);
-  /* เส้นประบอกแนวตัด วางห่างขอบขาวออกไปเล็กน้อย กันคนตัดชิดจนขอบขาวหาย */
-  pg.frame(mm(x - 2), mm(y - 2), mm(total + 4), mm(total + 4), 0.4, 0.75, 2);
   return total;
 }
 
-/** ป้ายพร้อมป้ายชื่อและคำอธิบายใต้ป้าย คืนความสูงรวมที่ใช้ไป */
-function markerBlock(pg, id, x, y, codeMM) {
-  const total = marker(pg, id, x, y + 16, codeMM);
+const LABEL_H = 10;    /* แถบชื่อใต้ป้าย อยู่ในกรอบตัดเดียวกับป้าย */
+const CUT_PAD = 1.5;   /* ระยะจากขอบขาวของป้ายถึงเส้นตัด */
+
+/** การ์ดหนึ่งใบ = ป้าย + แถบชื่อ + (ฐานพับถ้ามี) ล้อมด้วยเส้นตัดเส้นเดียว
+    y คือขอบล่างสุดของการ์ด ไม่รวมเส้นตัด · คืนความสูงของการ์ด
+
+    ชื่อป้ายต้องอยู่ "ในกรอบตัดเดียวกับป้าย" เสมอ ไม่ใช่ลอยอยู่ระหว่างการ์ด
+    เดิมชื่อถูกวางใต้กรอบตัด แล้วพื้นขาวของการ์ดใบถัดไปทับจนหายทั้งบรรทัด
+    ป้ายหน้าอกกับป้ายเอวจึงออกมาเป็นสี่เหลี่ยมสองใบที่ไม่มีชื่อ ซึ่งสลับกันได้ง่าย
+    และถ้าสลับ ค่าการโคลงของลำตัวจะผิดตั้งแต่ยังไม่เริ่มวัด
+
+    ฐานพับก็ต้องอยู่ในกรอบเดียวกัน ไม่งั้นตัดตามเส้นแล้วฐานหลุดจากป้าย */
+function markerCard(pg, id, x, y, codeMM, foldMM) {
+  const fold = foldMM || 0;
+  const total = markerOnly(pg, id, x, y + fold + LABEL_H, codeMM);
   const role = A.ROLE[id], nm = A.ROLE_NM[role] || role;
-  pg.text(nm, mm(x + total / 2), mm(y + 8), 13, 0, "c");
+  pg.text(nm, mm(x + total / 2), mm(y + fold + 4.4), 12, 0, "c");
   const use = (A.ROLE_USE[role] || [])[0] || "";
-  pg.text(use, mm(x + total / 2), mm(y + 2.5), 8.5, 0.35, "c");
-  return total + 16;
+  pg.text(use, mm(x + total / 2), mm(y + fold + 0.8), 8, 0.35, "c");
+  if (fold) {
+    /* เส้นประหนาคือแนวพับ ไม่ใช่แนวตัด — วาดพาดเต็มความกว้างของการ์ด */
+    pg.line(mm(x - CUT_PAD), mm(y + fold), mm(x + total + CUT_PAD), mm(y + fold), 0.8, 0.45, 2.5);
+    pg.text("พับตามเส้นนี้ แล้ววางให้ป้ายตั้งขึ้น",
+            mm(x + total / 2), mm(y + fold / 2 - 1.5), 10, 0.35, "c");
+  }
+  pg.frame(mm(x - CUT_PAD), mm(y - CUT_PAD),
+           mm(total + 2 * CUT_PAD), mm(total + LABEL_H + fold + 2 * CUT_PAD), 0.4, 0.75, 2);
+  return total + LABEL_H + fold;
 }
+const markerBlock = (pg, id, x, y, codeMM) => markerCard(pg, id, x, y, codeMM, 0);
 
 /* ============================================================
    หน้าที่ 1 — วิธีใช้ และไม้บรรทัดสอบเทียบเครื่องพิมพ์
@@ -159,11 +179,17 @@ function pageIntro() {
    ============================================================ */
 function pageBody() {
   const p = page();
-  p.text("ป้ายติดตัว — ตัดตามเส้นประ", mm(MARGIN), mm(297 - MARGIN - 4), 13, 0);
+  p.text("ป้ายติดตัว — ตัดตามเส้นประ", mm(MARGIN), mm(297 - 10 - 4), 13, 0);
   const total = CODE_MM + 2 * (CODE_MM / A.CELLS);
   const x = (210 - total) / 2;
-  markerBlock(p, 0, x, 297 - MARGIN - 12 - (total + 16), CODE_MM);
-  markerBlock(p, 1, x, MARGIN + 4, CODE_MM);
+  /* การ์ดสองใบต่อหน้าพอดี ๆ: 297 มม. − ขอบบนล่าง 19 − หัวเรื่อง 8 = 270
+     การ์ดใบละ total(120) + ชื่อ(10) + เส้นตัดสองข้าง(3) = 133 · สองใบ 266 เหลือช่องว่าง 4
+     ตัวเลขนี้บีบจริง จึงคำนวณจากค่าคงที่แทนการเขียนตำแหน่งตายตัว
+     เพราะถ้ามีใครเปลี่ยน CODE_MM แล้วตำแหน่งตายตัวไม่ขยับ การ์ดจะทับกันเงียบ ๆ อีก */
+  const span = total + LABEL_H + 2 * CUT_PAD;
+  const top = 297 - 10 - 10;                     /* ขอบบนของเส้นตัดใบบน */
+  markerCard(p, 0, x, top - span + CUT_PAD, CODE_MM, 0);
+  markerCard(p, 1, x, 9 + CUT_PAD, CODE_MM, 0);
   return p;
 }
 
@@ -174,23 +200,18 @@ function pageBody() {
    ป้ายกว้าง 90 มม. จะเหลือความสูงในภาพเพียงราวหนึ่งในสาม ซึ่งต่ำกว่าขีดที่
    อ่านได้ · จึงพิมพ์ฐานพับมาให้ตั้งขึ้นหันหน้าเข้ากล้องแทน
    ============================================================ */
-function pageStand(ids, title) {
+const FOLD = 26;
+
+function pageStand(id, title, note) {
   const p = page();
   p.text(title, mm(MARGIN), mm(297 - MARGIN - 4), 13, 0);
   const total = CODE_MM + 2 * (CODE_MM / A.CELLS);
   const x = (210 - total) / 2;
-  const FOLD = 26;
-  const tops = [297 - MARGIN - 12, MARGIN + 4 + total + 16 + FOLD];
-
-  ids.forEach((id, i) => {
-    const yBase = tops[i] - (total + 16) - FOLD;
-    markerBlock(p, id, x, yBase + FOLD, CODE_MM);
-    /* ฐานพับ: เส้นประคือแนวพับ ไม่ใช่แนวตัด */
-    p.frame(mm(x), mm(yBase), mm(total), mm(FOLD), 0.5, 0.8);
-    p.line(mm(x), mm(yBase + FOLD), mm(x + total), mm(yBase + FOLD), 0.8, 0.45, 2.5);
-    p.text("พับตามเส้นนี้ แล้ววางให้ป้ายตั้งขึ้น", mm(x + total / 2), mm(yBase + FOLD / 2 - 1),
-           10, 0.35, "c");
-  });
+  /* ป้ายตั้งพื้นได้หน้าละใบ เพราะการ์ดใบหนึ่งสูง 120 + ชื่อ 10 + ฐานพับ 26 = 156 มม.
+     สองใบไม่ลงหน้า A4 · ของเดิมยัดสองใบต่อหน้า ใบบนจึงถูกใบล่างทับหายไปเกินครึ่ง */
+  const yCard = 297 - MARGIN - 14 - (total + LABEL_H + FOLD);
+  markerCard(p, id, x, yCard, CODE_MM, FOLD);
+  p.paragraph(note, mm(MARGIN), mm(yCard - CUT_PAD - 12), 10, mm(186), mm(5), 0.3);
   return p;
 }
 
@@ -206,15 +227,10 @@ function pageCourse(id) {
   p.text("ป้ายจุดกลับตัว และผังการวางป้าย", mm(MARGIN), mm(297 - MARGIN - 4), 13, 0);
   const total = CODE_MM + 2 * (CODE_MM / A.CELLS);
   const x = (210 - total) / 2;
-  const FOLD = 26;
-  const yBase = 297 - MARGIN - 12 - (total + 16) - FOLD;
-  markerBlock(p, id, x, yBase + FOLD, CODE_MM);
-  p.frame(mm(x), mm(yBase), mm(total), mm(FOLD), 0.5, 0.8);
-  p.line(mm(x), mm(yBase + FOLD), mm(x + total), mm(yBase + FOLD), 0.8, 0.45, 2.5);
-  p.text("พับตามเส้นนี้ แล้ววางให้ป้ายตั้งขึ้น", mm(x + total / 2), mm(yBase + FOLD / 2 - 1),
-         10, 0.35, "c");
+  const yBase = 297 - MARGIN - 14 - (total + LABEL_H + FOLD);
+  markerCard(p, id, x, yBase, CODE_MM, FOLD);
 
-  let y = yBase - 14;
+  let y = yBase - CUT_PAD - 12;
   p.text("วางป้ายตามผังนี้ แล้ววัดระยะด้วยตลับเมตร", mm(MARGIN), mm(y), 12, 0);
   y -= 12;
 
@@ -251,9 +267,10 @@ function pageFloor() {
   p.text("ป้ายท่าทรงตัว และตำแหน่งเท้าสี่ท่า", mm(MARGIN), mm(297 - MARGIN - 4), 13, 0);
   const total = CODE_MM + 2 * (CODE_MM / A.CELLS);
   const x = (210 - total) / 2;
-  markerBlock(p, 2, x, 297 - MARGIN - 12 - (total + 16), CODE_MM);
+  const yCard = 297 - MARGIN - 14 - (total + LABEL_H);
+  markerCard(p, 2, x, yCard, CODE_MM, 0);
 
-  let y = 297 - MARGIN - 12 - (total + 16) - 12;
+  let y = yCard - CUT_PAD - 12;
   p.text("วางป้ายราบกับพื้น แล้วยืนให้ปลายเท้าชิดขอบบนของป้าย",
          mm(105), mm(y), 10, 0.35, "c");
   y -= 12;
@@ -265,18 +282,22 @@ function pageFloor() {
     ["ท่าที่ 3 ต่อเท้า", [[0, 0], [0, 22]]],
     ["ท่าที่ 4 ขาเดียว", [[0, 0]]]
   ];
+  /* ความสูงของกรอบคิดจากท่าที่กินที่มากที่สุด คือท่าต่อเท้า:
+     ระยะห่างส้นถึงปลาย 22 มม. บวกความยาวเท้าอีก 22 มม. = 44 มม.
+     ของเดิมกรอบสูง 52 มม. และวางรอยเท้าไว้กลางกรอบ รอยเท้าใบบนจึงทับชื่อท่า */
+  const BOXH = 62, FEET_C = 44;
   const bw = 186 / 4;
   stances.forEach(([nm, feet], i) => {
     const cx = MARGIN + bw * i + bw / 2;
-    p.frame(mm(MARGIN + bw * i + 2), mm(y - 52), mm(bw - 4), mm(52), 0.5, 0.75);
+    p.frame(mm(MARGIN + bw * i + 2), mm(y - BOXH), mm(bw - 4), mm(BOXH), 0.5, 0.75);
     p.text(nm, mm(cx), mm(y - 8), 9.5, 0, "c");
     for (const [fx, fy] of feet) {
-      p.ellipse(mm(cx + fx), mm(y - 34 + fy), mm(5.5), mm(11), 0.7, 0.15);
+      p.ellipse(mm(cx + fx), mm(y - FEET_C + fy), mm(5.5), mm(11), 0.7, 0.15);
     }
     if (feet.length === 1)
-      p.text("ยกอีกข้าง", mm(cx), mm(y - 49), 8.5, 0.4, "c");
+      p.text("ยกอีกข้าง", mm(cx), mm(y - BOXH + 2.5), 8.5, 0.4, "c");
   });
-  y -= 58;
+  y -= BOXH + 6;
   p.paragraph(
     "รูปรอยเท้าเป็นผังบอกตำแหน่ง ไม่ได้เท่าขนาดเท้าจริง " +
     "ยืนตามผังแล้วให้ผู้ดูแลอยู่ข้าง ๆ ทุกท่า โดยเฉพาะท่าที่ 4",
@@ -288,18 +309,31 @@ function pageFloor() {
 }
 
 export function build() {
-  return buildPDF([pageIntro(), pageBody(),
-                   pageStand([4, 5], "ป้ายเส้นทางเดิน — พับตามเส้นแล้วตั้งให้หันหน้าเข้ากล้อง"),
-                   pageCourse(3), pageFloor()], font,
-                  { title: "CareSignal ArUco markers" });
+  const pages = [
+    pageIntro(),
+    pageBody(),
+    pageStand(4, "ป้ายจุดเริ่มต้น — พับแล้วตั้งข้างเก้าอี้",
+      "ตั้งใบนี้ข้างเก้าอี้ตรงจุดที่เท้าอยู่ตอนเริ่ม หันหน้าป้ายเข้ากล้อง " +
+      "ป้ายจุดเริ่มต้นทำให้ระบบรู้ว่าเก้าอี้อยู่ตรงไหนในภาพ จึงแยกการลุกออกจากการเดินได้ " +
+      "ถ้าวางป้ายเอียงหลบกล้อง ระบบยังทดสอบต่อได้แต่จะกลับไปเดาจากโครงร่างแทน " +
+      "และจะบันทึกไว้ว่าครั้งนั้นไม่ได้ยืนยันตำแหน่งด้วยป้าย"),
+    pageStand(5, "ป้ายจุด 1 เมตร — พับแล้วตั้งกลางทาง",
+      "ตั้งใบนี้ห่างจากเก้าอี้ 1 เมตร วัดด้วยตลับเมตร ไม่ใช่กะด้วยสายตา " +
+      "จุดกึ่งกลางมีไว้สองอย่าง: ยืนยันว่าเดินผ่านจริงไม่ได้ตัดมุม " +
+      "และวัดความเร็วช่วงแรกแยกจากช่วงหลัง ซึ่งบอกได้ว่าช้าตั้งแต่ออกตัว " +
+      "หรือมาช้าตอนหมุนกลับ — สองอย่างนี้ส่งต่อไปคนละทาง"),
+    pageCourse(3),
+    pageFloor()
+  ];
+  return buildPDF(pages, font, { title: "CareSignal ArUco markers" });
 }
-export const SHEET = { CODE_MM: CODE_MM, MARGIN: MARGIN, IDS: [0, 1, 2, 3, 4, 5] };
+export const SHEET = { CODE_MM: CODE_MM, MARGIN: MARGIN, IDS: [0, 1, 2, 3, 4, 5], PAGES: 6 };
 
 /* รันเป็นสคริปต์เท่านั้นจึงเขียนไฟล์ ถูก import มาก็แค่ให้ฟังก์ชันไป */
 if (process.argv[1] && process.argv[1].endsWith("make-marker-pdf.mjs")) {
   const pdf = build();
   writeFileSync(OUT, pdf);
-  console.log("เขียน " + OUT + " แล้ว · " + (pdf.length / 1024).toFixed(0) + " KB · 5 หน้า");
+  console.log("เขียน " + OUT + " แล้ว · " + (pdf.length / 1024).toFixed(0) + " KB · " + SHEET.PAGES + " หน้า");
   console.log("ป้ายในแผ่น: " + SHEET.IDS
     .map((id) => id + "=" + A.ROLE_NM[A.ROLE[id]]).join(" · "));
 }
