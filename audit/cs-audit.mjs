@@ -521,8 +521,8 @@ function layer6() {
       "ยังไม่มีข้อมูลนำร่องและไม่มีกลุ่มเปรียบเทียบ"],
     ["U-05", "ความปลอดภัยของการให้ผู้สูงอายุทดสอบเองที่บ้าน",
       "มี Safety Gate แต่ยังไม่มีข้อมูลเหตุการณ์ไม่พึงประสงค์จากการใช้จริง"],
-    ["U-06", "ความทนทานของระบบรู้จำเสียงกับสำเนียงและเสียงรบกวนจริง",
-      "ทดสอบด้วยข้อความจำลอง ยังไม่มีการทดสอบภาคสนาม"],
+    ["U-06", "ความทนทานของการจับท่ายกมือกับแสงจริง เสื้อผ้า และผู้ที่ยกแขนได้ไม่สุด",
+      "ทดสอบด้วยจุดร่างกายจำลอง ยังไม่มีการทดสอบภาคสนาม (ระบบรู้จำเสียงถูกถอดออกแล้ว 7 ก.ย. 2569)"],
   ];
   for (const [id, name, why] of unverifiable) {
     req(6, id, name, "UNVERIFIABLE", "-", why);
@@ -926,11 +926,12 @@ function layer7() {
     const visAll = read("CareSignal-Vision.html") || "";
     const pair = [["CareSignal-App.html", appAll], ["CareSignal-Vision.html", visAll]];
     const vChecks = [
-      ["X-68", "คำสั่งเสียงต้องทวนกลับและรอคำว่า ยืนยัน ก่อนทำจริง",
-        (t) => t.includes("function vcDispatch(") && t.includes("var VC_NAMES=")
-            && t.includes("พูดว่า ยืนยัน") && t.includes('k:"confirm"')],
-      ["X-69", "ตัวกรองเสียงสะท้อนต้องหมดอายุเองเสมอ (ห้าม Infinity)",
-        (t) => !t.includes("until:Infinity") && t.includes("until:Date.now()+9000")],
+      ["X-68", "ทุกคำสั่งจากท่าทางหรือรีโมตต้องทวนกลับด้วยเสียงก่อนลงมือ และไม่มีตัวรู้จำเสียงเหลืออยู่",
+        (t) => t.includes("function rcAck(") && t.includes('speak("รับทราบ "+nm,{force:true});')
+            && t.includes('if(typeof rcAck==="function")rcAck(k);') && !/SpeechRecognition/.test(t)],
+      ["X-69", "หน้าต่างทวนกลับต้องหมดอายุเอง และ speak() ต้องไม่ตัดคำทวนทิ้ง",
+        (t) => !t.includes("until:Infinity") && t.includes("SPK.hold=Date.now()+1400")
+            && t.includes("now>=SPK.hold)speechSynthesis.cancel()")],
       ["X-70", "speak() ต้องกันพูดประโยคเดิมซ้ำ",
         (t) => t.includes("SPK.last[key]")],
       ["X-71", "OCR อ่านหลายรอบ และไม่โทษรูปเมื่อยาไม่อยู่ในฐาน",
@@ -990,14 +991,14 @@ function layer7() {
            && !(function(){ const j = t.indexOf("async function startFacePipeline");
                             return j >= 0 && t.slice(j, j+400).includes("camFullscreen") })()],
       ["X-78", "ย้ายช่องติ๊กยินยอมลงแผงด้วย ไม่ใช่ย้ายเฉพาะปุ่ม",
-        (t) => t.includes('camHalf(["fcChkWrap","fcSave","fcVoiceHint","fcSkip"')],
-      ["X-79", "ยืนยันด้วยเสียงได้ทั้งหน้าใบหน้าและทุกหัวข้อ",
-        (t) => /function voiceConfirm\(/.test(t)
-           && /voiceConfirm\({[\s\S]{0,400}onRedo:goRedo/.test(t)
-           && /id="fcVoiceHint"/.test(t)],
-      ["X-80", "เสียงต้องผ่านเงื่อนไขเดียวกับปุ่ม และบอกเหตุผลเมื่อยังทำไม่ได้",
-        (t) => /enabled:function\(\){ return !!\(cur&&chk\.checked\)/.test(t)
-           && /ยังยืนยันไม่ได้/.test(t)],
+        (t) => t.includes('camHalf(["fcChkWrap","fcSave","fcSkip"')],
+      ["X-79", "หน้ายืนยันท้ายหัวข้อพูดทวนอย่างเดียว ไม่เปิดไมค์ ปุ่มบนจอเป็นทางเดียวที่ไปต่อ",
+        (t) => /function spokenPrompt\(/.test(t)
+           && /spokenPrompt\("บันทึก"\+\(sec\?sec\.t:""\)/.test(t)
+           && !/fcVoiceHint|function voiceConfirm\(/.test(t)],
+      ["X-80", "บันทึกใบหน้าต้องกดปุ่มเองเท่านั้น ไม่มีทางลัดด้วยเสียงหรือท่าทาง",
+        (t) => /spokenPrompt\("เมื่อพร้อมบันทึกใบหน้า ให้ติ๊กช่องยินยอม แล้วกดปุ่มบันทึก"\)/.test(t)
+           && /if\(!cur\|\|!chk\.checked\)return;/.test(t)],
     ];
     for (const [id, name, fn] of fChecks) {
       const bad = APP_PAIR.filter(([f, t]) => !fn(t)).map(([f]) => f);
@@ -1067,21 +1068,25 @@ function layer7() {
   {
     const meds = read("cs-meds.js") || "";
     const vChecks = [
-      ["X-85", "ผู้ช่วยเสียงตอบคำถามได้ ไม่ใช่รับเฉพาะคำสั่งตายตัว",
-        (t) => /var VC_ASK=/.test(t) && /function vcReply\(/.test(t) && /function vcAsk\(/.test(t)],
-      ["X-86", "ตัดคำลงท้ายก่อนจับคำสั่ง (พูดสุภาพแล้วยังสั่งได้)",
-        (t) => /function vcStrip\(/.test(t) && /vcParse\(txt\)\|\|vcParse\(vcStrip\(txt\)\)/.test(t)],
-      ["X-87", "ฟังไม่เข้าใจต้องบอกว่าพูดอะไรได้ ไม่เงียบ",
-        (t) => /function vcNotUnderstood\(/.test(t) && /ยังไม่เข้าใจที่พูด/.test(t)],
+      ["X-85", "ปุ่มช่วยเหลือพูดวิธีสั่งด้วยท่าทางได้ทุกหน้า (RC_HELP) และป้ายบนจอบอกว่ายกมือแล้วจะเกิดอะไร",
+        (t) => /var RC_HELP=/.test(t) && t.includes("+RC_HELP,{force:true})")
+            && /function gestureHint\(/.test(t) && t.includes('"ยกมือ = "+(RC_NM[a]||a)')],
+      ["X-86", "ท่าทางต้องค้างครบ 0.8 วินาทีจึงนับ และจำนวนมือเปลี่ยนต้องเริ่มนับใหม่ (กันอ่านผิดเป็นมือเดียว)",
+        (t) => t.includes("if(Date.now()-HAND.since<800)return;")
+            && t.includes("if(n!==HAND.n){HAND.n=n;HAND.since=n?Date.now():0;return}")],
+      ["X-87", "เงียบนานระบบทวนคำแนะนำเอง ไม่เกินสองรอบ และไม่ทวนทับตอนตัวเองกำลังพูด",
+        (t) => t.includes("STEP.nudges>=2)return;") && t.includes("if(ttsBusy())return;")
+            && /function ttsBusy\(/.test(t)],
       ["X-88", "คำตอบด้วยเสียงเขียนไว้ล่วงหน้า ไม่เรียกโมเดลภาษาภายนอก",
         (t) => !/openai|anthropic\.com|generativelanguage|\/v1\/chat\/completions/i.test(t)],
-      ["X-89", "คำตอบด้วยเสียงต้องไม่ข้ามเส้นเป็นการวินิจฉัยหรือแนะนำยา",
+      ["X-89", "ทุกประโยคที่ระบบพูดเอง (cue/hint/speak/RC_HELP) ต้องไม่ข้ามเส้นเป็นการวินิจฉัยหรือแนะนำยา",
         (t) => {
-          const m = t.match(/function vcReply\([\s\S]*?\n\}/);
-          if (!m) return false;
-          const body = m[0];
-          if (/วินิจฉัยว่า|เป็นโรค|ควรกินยา|ให้หยุดยา|ปรับขนาดยา/.test(body)) return false;
-          return /ไม่ใช่การวินิจฉัย/.test(body) && /หยุดทันที/.test(body);
+          const said = [];
+          for (const re of [/speak\("([^"]*)"/g, /cue:"([^"]*)"/g, /hint:"([^"]*)"/g, /var RC_HELP="([^;]*);/g]) {
+            let m; while ((m = re.exec(t))) said.push(m[1]);
+          }
+          if (!said.length) return false;
+          return !said.some((x) => /วินิจฉัยว่า|เป็นโรค|ควรกินยา|ให้หยุดยา|ปรับขนาดยา/.test(x));
         }],
     ];
     for (const [id, name, fn] of vChecks) {
@@ -1089,10 +1094,10 @@ function layer7() {
       const ok = bad.length === 0;
       req(7, id, name, ok ? "PASS" : "MISSING",
           ok ? "ครบทั้งแอปสมาชิกและหน้าทดลอง" : ("ขาดใน " + bad.join(", ")));
-      if (!ok) finding("HIGH", id, "ผู้ช่วยเสียงถดถอย: " + name,
+      if (!ok) finding("HIGH", id, "การสั่งด้วยท่าทางถดถอย: " + name,
         "ถ้าเสียงรับได้เฉพาะคำตายตัว ผู้สูงอายุที่พูดไม่ตรงรูปแบบจะใช้ไม่ได้เลย " +
         "และถ้าคำตอบข้ามเส้นไปเป็นคำแนะนำทางการแพทย์ จะขัดกับขอบเขตที่ระบบประกาศไว้",
-        "ขาดใน " + bad.join(", "), "คืนกลไกตามหัวคอมเมนต์ของ vcReply / vcAsk");
+        "ขาดใน " + bad.join(", "), "คืนกลไกตามหัวคอมเมนต์ของ gestureTick / stepTick / RC_HELP");
     }
 
     /* ฐานยาต้องครอบคลุมฉลากที่พบจริง — เคยตอบว่า "ไม่รู้จักยานี้" กับยาสามัญ */
@@ -1268,30 +1273,26 @@ function layer7() {
       bad.join(" · "), "ตั้งค่าเป็น age<65?10.0:(age<75?11.5:12.1)");
   }
 
-  /* ---- X-104: ด่านกันระบบสั่งตัวเอง ต้องอยู่หน้าการตัดสินใจเสียงเสมอ ----
-     อาการจริงที่เคยเกิด: ระบบพูด → ไมค์ได้ยินเสียงตัวเองแบบถอดความเพี้ยน →
-     ตัวกรองข้อความจับไม่ได้ → เข้าชั้นถาม-ตอบ → ระบบพูดอีก → วนลูปคุยกับตัวเอง
-     ด่านที่ต้องมี: หน้าต่างเวลาที่ระบบกำลังพูด (SPK.until)
-     เดิมกฎนี้บังคับชั้น VAD ที่เปิดไมค์เส้นที่สองด้วย ถอดข้อบังคับนั้นออกแล้ว
-     เพราะวัดบนเครื่องจริงพบว่าไม่เคยเปิดติด (ready=false) แต่ยังแย่งสิทธิ์ไมค์
-     กับตัวรู้จำเสียงบนมือถือ คือได้ความเสี่ยงมาโดยไม่ได้ประโยชน์
-     เพิ่มการล็อกค่าประมาณเวลาพูด ไม่ให้กลับไปยาวจนระบบปิดหูตัวเองหลายวินาที
-     (เคยวัดได้ 9.66 วินาทีต่อการประกาศหนึ่งครั้ง ผู้ใช้พูดตอบแล้วหายไปทั้งหมด) */
+  /* ---- X-104: ด่านกันสั่งซ้ำจากท่าทาง และกันทวนคำแนะนำทับเสียงตัวเอง ----
+     ระบบรู้จำเสียงถูกถอดออกแล้ว (7 ก.ย. 2569) ด่านที่ต้องเหลือคือ
+     (1) ท่าทางต้องค้างครบ 800 ms  (2) remoteFire ล็อก 1.5 วินาทีกันสั่งรัวจากเฟรมติดกัน
+     (3) ตัวทวนคำแนะนำไม่พูดทับตอนระบบกำลังพูด และไม่เชื่อ speechSynthesis.speaking
+         ที่ค้างเป็น true ถาวรบนบางเครื่อง เกินเพดานเวลาที่ประมาณจากความยาวประโยค */
   {
     const bad = APP_PAIR.filter(([f, t]) => {
-      const okFns = /function\s+vcBlockedBy\s*\(/.test(t)
-        && /SPK\.until=now\+800\+text\.length\*75;/.test(t);
-      const di = t.indexOf("function vcDispatch(");
-      if (di < 0 || !okFns) return true;
-      const head = t.slice(di, di + 600);
-      return !head.includes("var blocked=vcBlockedBy();");
+      if (!/function\s+ttsBusy\s*\(/.test(t) || !/SPK\.until=now\+800\+text\.length\*75;/.test(t)) return true;
+      if (!t.includes("if(Date.now()-HAND.since<800)return;")) return true;
+      if (!t.includes("if(now-(HAND.fired||0)<1500)return null;")) return true;
+      if (!t.includes("if(ttsBusy())return;")) return true;
+      if (!t.includes("speaking&&now<SPK.until+2500")) return true;
+      return false;
     }).map(([f]) => f);
-    req(7, "X-104", "ด่านกันระบบพูดใส่ตัวเอง ต่อไว้หน้า vcDispatch และไม่ปิดหูนานเกินไป",
+    req(7, "X-104", "ด่านกันสั่งซ้ำจากท่าทาง และกันทวนคำแนะนำทับเสียงตัวเอง",
         bad.length ? "MISSING" : "PASS",
-        bad.length ? ("ขาดหรือไม่ได้ต่อไว้ใน " + bad.join(" · ")) : "ครบทั้งสองแอป และเรียกก่อนตัดสินใจ");
-    if (bad.length) finding("HIGH", "X-104", "การตัดสินใจเสียงไม่ผ่านด่านกันสั่งตัวเอง",
-      "ระบบจะกลับไปตอบเอง/ทำงานเองจากเสียงตัวเองหรือเสียงแวดล้อม ซึ่งเป็นอาการที่ผู้ใช้เคยแจ้งจริง",
-      bad.join(" · "), "เรียก vcBlockedBy() ที่ต้น vcDispatch และเปิด vadStart คู่กับไมค์เสมอ");
+        bad.length ? ("ขาดหรือไม่ได้ต่อไว้ใน " + bad.join(" · ")) : "ครบทั้งสองแอป: ค้าง 800 ms · ล็อก 1.5 วิ · ttsBusy มีเพดานเวลา");
+    if (bad.length) finding("HIGH", "X-104", "ท่าทางถูกอ่านเป็นคำสั่งซ้ำ หรือระบบพูดทับตัวเอง",
+      "มือที่ยกค้างจะถูกอ่านเป็นคำสั่งหลายครั้งติดกัน หรือระบบทวนคำแนะนำทับเสียงตัวเองจนผู้สูงอายุฟังไม่ทัน",
+      bad.join(" · "), "คงเงื่อนไข 800 ms ใน gestureTick, ล็อก 1.5 วินาทีใน remoteFire และ ttsBusy() ใน stepTick");
   }
 
   /* ---- X-105: ปุ่ม "ติดตั้งเป็นแอป" ในหน้าแรกต้องกดได้จริง ----
@@ -1322,42 +1323,34 @@ function layer7() {
       "ทำให้ #csInstall เป็นปุ่มจริงที่มีตัวรับการกด และมีคำแนะนำทำมือครบทุกแพลตฟอร์ม");
   }
 
-  /* ---- X-106: หน้าตรวจร่างกายต้องสั่งด้วยเสียงแบบทีละขั้น ----
-     บั๊กจริงที่ผู้ใช้เจอ: คำสั่งเกือบทุกคำถูกส่งเข้าการทวนให้ยืนยัน ซึ่งพูด
-     ประโยคยาวราว 45 ตัวอักษร ด่านกันฟังเสียงตัวเองจึงปิดหูระบบไปราว 5.2 วินาที
-     คนที่ตอบ "ยืนยัน" ทันทีตามธรรมชาติถูกทิ้งเงียบ ๆ พอพูดซ้ำคำสั่งก็หมดอายุแล้ว
-     ผู้ใช้เห็นเป็น "พูดแล้วระบบไม่ฟังเลย"
-     สิ่งที่ต้องมี: ตัวจับรูปแบบคำ · เครื่องสถานะขั้นตอน · ต่อไว้หน้า vcDispatch
-     และทั้งสี่หน้าวัดผลต้องประกาศขั้นตอนจริง ไม่ใช่ฟังลอย ๆ
+  /* ---- X-106: หน้าตรวจร่างกายสั่งด้วยท่าทางแบบทีละขั้น ----
+     ยกมือแล้วทำทันที ไม่มีการทวนให้ยืนยันซ้ำ (ระบบพูดทวนว่ารับคำสั่งแล้ว แต่ไม่รอคำตอบ)
+     ทุกหน้าวัดผลต้องประกาศขั้นตอนจริง และลำดับคำสั่งหลัก/รองต้องคงที่
+     เพื่อให้ป้ายบนจอ "ยกมือ = …" ตรงกับสิ่งที่เกิดขึ้นเสมอ
      ห้ามเรียกโมเดลภาษาหรือบริการเสียงภายนอกในเส้นทางนี้ */
   {
     const bad = APP_PAIR.filter(([f, t]) => {
-      const core = /var VC_INTENT=/.test(t) && /function\s+vcIntent\s*\(/.test(t)
-        && /function\s+stepBegin\s*\(/.test(t) && /function\s+stepHear\s*\(/.test(t)
-        && /function\s+stepStop\s*\(/.test(t);
-      const di = t.indexOf("function vcDispatch(");
-      if (di < 0 || !core) return true;
-      /* ต้องต่อไว้ในช่วงต้นของ vcDispatch จริง ไม่ใช่แค่มีฟังก์ชันลอยอยู่ */
-      if (!t.slice(di, di + 1200).includes("var hit=stepHear(txt);")) return true;
-      /* ทั้งสี่หน้าวัดผลต้องประกาศขั้นตอนของตัวเอง */
+      const core = /function\s+stepBegin\s*\(/.test(t) && /function\s+stepStop\s*\(/.test(t)
+        && /function\s+stepPrimary\s*\(/.test(t) && /function\s+stepSecondary\s*\(/.test(t)
+        && /function\s+gestureTick\s*\(/.test(t) && /function\s+gestureHint\s*\(/.test(t);
+      if (!core) return true;
+      if (!/var order=\["record","start","pass","next"/.test(t)) return true;
+      if (!t.includes('var order=["fail","redo","stop"];')) return true;
+      if (!t.includes('remoteFire(n===1?"hand1":"hand2", n===1?stepPrimary():stepSecondary());')) return true;
       for (const id of ['id:"calSit"', 'id:"calStand"', 'id:"ftsst"', 'id:"tug"', 'id:"balConfirm"'])
-        if (!t.includes(id)) return true;
-      /* ลำดับการจับคำ: ไม่ผ่าน/ไม่ได้ยิน ต้องมาก่อน ผ่าน/ไม่ได้ ไม่งั้นบันทึกผลผิด */
-      const iv = t.indexOf("var VC_INTENT=");
-      const blk = t.slice(iv, t.indexOf("];", iv));
-      if (blk.indexOf('"fail"') > blk.indexOf('"pass"')) return true;
-      if (blk.indexOf('"repeat"') > blk.indexOf('"fail"')) return true;
-      if (blk.indexOf('"redo"') > blk.indexOf('"start"')) return true;
+        if (!t.includes("stepBegin({" + id)) return true;
+      /* ไม่มีขั้นไหนรอคำตอบ ยืนยัน/ยกเลิก หรือรอคำพูดอีก */
+      if (/VC\.pending|function stepHear\(|wait:function/.test(t)) return true;
       return false;
     }).map(([f]) => f);
-    req(7, "X-106", "สั่งงานด้วยเสียงแบบทีละขั้น พูดแล้วทำทันที ไม่ต้องยืนยันซ้ำ",
+    req(7, "X-106", "สั่งด้วยท่าทางแบบทีละขั้น ยกมือแล้วทำทันที ไม่ต้องยืนยันซ้ำ",
         bad.length ? "MISSING" : "PASS",
         bad.length ? ("ขาดหรือต่อไม่ครบใน " + bad.join(" · "))
-                   : "ครบทั้งสองแอป ทุกหน้าวัดผลประกาศขั้นตอน และลำดับการจับคำถูกต้อง");
-    if (bad.length) finding("HIGH", "X-106", "การสั่งงานด้วยเสียงกลับไปเป็นแบบทวนให้ยืนยัน",
-      "ประโยคทวนยาวทำให้ด่านกันฟังเสียงตัวเองปิดหูระบบหลายวินาที ผู้ใช้พูดแล้วไม่มีอะไรเกิดขึ้น",
+                   : "ครบทั้งสองแอป ทุกหน้าวัดผลประกาศขั้นตอน และลำดับคำสั่งหลัก/รองคงที่");
+    if (bad.length) finding("HIGH", "X-106", "การสั่งด้วยท่าทางกลับไปเป็นแบบทวนให้ยืนยัน หรือหน้าวัดผลไม่ประกาศขั้นตอน",
+      "ผู้ใช้ยกมือแล้วไม่เกิดอะไร หรือป้ายบนจอบอกอย่างหนึ่งแต่ระบบทำอีกอย่าง ซึ่งเป็นอาการเดียวกับที่เคยเจอกับเสียง",
       bad.join(" · "),
-      "ประกาศขั้นตอนด้วย stepBegin ในทุกหน้าวัดผล และเรียก stepHear ที่ต้น vcDispatch");
+      "ประกาศขั้นตอนด้วย stepBegin ในทุกหน้าวัดผล และให้ gestureTick เรียก remoteFire ตรง ๆ");
   }
 
   /* ---- X-107: ไม่เพิ่มบริการเสียงของบุคคลที่สามนอกเหนือจากของเบราว์เซอร์ ----
@@ -1460,24 +1453,23 @@ function layer7() {
      และต้องยกเลิกได้ เพราะผู้ใช้เคยสะท้อนว่าระบบเริ่มทั้งที่ยังไม่พร้อม */
   {
     const bad = APP_PAIR.filter(([f, t]) => {
-      /* ตัวนับถอยหลังร่วมที่ยกเลิกได้สามทาง: เสียง ปุ่ม และแตะจอ */
+      /* ตัวนับถอยหลังร่วมที่ยกเลิกได้สามทาง: ยกมืออีกครั้ง ปุ่ม และแตะจอ */
       if (!/function\s+cdStart\s*\(/.test(t) || !/function\s+cdCancel\s*\(/.test(t)) return true;
       if (!t.includes('addEventListener("pointerdown",CD.tap,true)')) return true;
-      /* ต้องมีคำสั่งเสียงสำหรับขอเวลาเพิ่ม ไม่งั้นยกเลิกด้วยเสียงไม่ได้ */
-      if (!/\["wait",/.test(t)) return true;
+      /* ยกมืออีกครั้งระหว่างนับ = ขอหยุดก่อน ไม่ใช่สั่งซ้อน */
+      if (!t.includes('if(cdRunning()){cdCancel();return "cancel"}')) return true;
       /* ทั้งสี่หน้าวัดผลต้องเรียกตัวนับถอยหลังเอง ไม่ใช่รอเสียงอย่างเดียว */
       const calls = (t.match(/cdStart\(\{/g) || []).length;
       if (calls < 4) return true;
-      /* ทาง B: ต้องขอคำเดาหลายแบบ และเลือกอันที่ขั้นตอนนั้นรับ */
-      if (!/maxAlternatives=5/.test(t) || !/function\s+vcPick\s*\(/.test(t)) return true;
-      if (!t.includes("vcDispatch(vcPick(res))")) return true;
+      /* ทาง B: ไม่พึ่งตัวรู้จำเสียงอีก */
+      if (/SpeechRecognition/.test(t)) return true;
       return false;
     }).map(([f]) => f);
-    req(7, "X-110", "การตรวจเดินหน้าได้ด้วยกล้อง แม้คำสั่งเสียงใช้ไม่ได้เลย",
+    req(7, "X-110", "การตรวจเดินหน้าได้ด้วยกล้อง แม้ผู้ใช้ไม่สั่งอะไรเลย",
         bad.length ? "FAIL" : "PASS",
         bad.length ? ("ขาดหรือต่อไม่ครบใน " + bad.join(" · "))
-                   : "ทั้งสี่หน้าวัดผลนับถอยหลังเอง ยกเลิกได้ด้วยเสียง ปุ่ม และแตะจอ");
-    if (bad.length) finding("HIGH", "X-110", "การตรวจค้างเมื่อคำสั่งเสียงไม่ติด",
+                   : "ทั้งสี่หน้าวัดผลนับถอยหลังเอง ยกเลิกได้ด้วยการยกมือ ปุ่ม และแตะจอ");
+    if (bad.length) finding("HIGH", "X-110", "การตรวจค้างเมื่อผู้ใช้ไม่สั่งอะไร",
       "ผู้สูงอายุจะติดค้างกลางการตรวจโดยไม่มีทางไปต่อ ซึ่งเป็นอาการที่ผู้ใช้แจ้งมาจริงหลายรอบ",
       bad.join(" · "),
       "ให้ทุกหน้าเรียก cdStart เมื่อกล้องเห็นว่าพร้อม และเปิดทางยกเลิกครบสามทาง");
@@ -2053,9 +2045,9 @@ function layer7() {
       bad.push("ไม่ได้แสดงคุณภาพภาพให้คนเห็นก่อนยืนยันผล");
 
     /* ---- โหมดผู้ดูแล ---- */
-    if (!/function voiceOK\(\)/.test(app)) bad.push("ไม่มีประตูเดียวที่ควบคุมการรับคำสั่งเสียง");
-    if (!/if\(typeof voiceOK==="function"&&!voiceOK\(\)\)/.test(app))
-      bad.push("โหมดผู้ดูแลไม่ได้ปิดการรับคำสั่งเสียงที่ต้นทาง");
+    if (!/function remoteOK\(\)/.test(app)) bad.push("ไม่มีประตูเดียวที่ควบคุมการรับท่าทางและรีโมต");
+    if (!/if\(typeof remoteOK==="function"&&!remoteOK\(\)\)/.test(app))
+      bad.push("โหมดผู้ดูแลไม่ได้ปิดการรับท่าทางที่ต้นทาง");
     if (!/id="carerOn"/.test(app)) bad.push("ไม่มีสวิตช์โหมดผู้ดูแลให้เปิดปิด");
     /* ปิดคำสั่งเสียงแล้วต้องยังพูดบอกขั้นตอน เพราะผู้ทดสอบยืนห่างจอ */
     if (!/if\(spec&&spec\.cue\)speak\(spec\.cue,\{force:true\}\);/.test(app))
@@ -2570,6 +2562,51 @@ function layer7() {
     if (bad.length) finding("MED", "X-130", "ผลสำรวจผู้ใช้อาจไม่ตรงกับข้อมูลดิบ หรือส่งไฟล์เปล่า",
       "ตัวเลขในใบสรุปที่ส่งประกวดพิสูจน์ที่มาไม่ได้ หรือแนบไฟล์ที่ยังไม่มีข้อมูลจริง",
       "ให้ใบสรุปนับจาก validation/results.json อย่างเดียว และคงแถบเตือนเมื่อ filled ยังไม่เป็น true");
+  }
+
+  /* ---- X-131: ถอดระบบรู้จำเสียงออกทั้งหมด เหลือเสียงพูดแนะนำและการทวนกลับ ----
+     เจ้าของระบบสั่งเมื่อ 7 ก.ย. 2569 เพราะการสั่งด้วยเสียงไม่เสถียร (Web Speech API ส่งเสียง
+     ไปถอดความที่เซิร์ฟเวอร์ ภาษาไทยไม่มีชุดในเครื่อง) ให้ใช้ท่าทางยกมือ รีโมต และปุ่มแทน
+     สิ่งที่ต้องคง: speak() พูดบอกทุกขั้น · rcAck ทวนกลับทุกคำสั่งที่รับ · ปุ่มบนจอครบ
+     สิ่งที่ต้องไม่มี: SpeechRecognition · ไมโครโฟน · ข้อความสั่งให้ผู้ใช้ "พูดว่า" · ป้ายไมค์
+     และเอกสารทุกฉบับต้องเล่าตรงกับแอป ไม่สอนให้สั่งด้วยเสียงอีก */
+  {
+    const bad = [];
+    for (const [f, t] of APP_PAIR) {
+      if (/SpeechRecognition/.test(t)) bad.push(f + " ยังมีตัวรู้จำเสียง");
+      if (/getUserMedia\(\{[^}]*audio\s*:\s*true/.test(t)) bad.push(f + " ยังเปิดไมโครโฟน");
+      if (/function (vcDispatch|vcParse|vcIntent|stepHear|voiceConfirm|vcStart|voiceOK)\(/.test(t))
+        bad.push(f + " ยังมีฟังก์ชันสั่งงานด้วยเสียง");
+      if (/🎤/.test(t)) bad.push(f + " ยังมีป้ายไมค์บนจอ");
+      const say = (t.match(/พูดว่า/g) || []).length;   /* เหลือได้เฉพาะ "เมื่อระบบพูดว่า เริ่ม" */
+      if (say > 2) bad.push(f + " ยังมีข้อความสั่งให้ผู้ใช้พูด " + say + " แห่ง");
+      if (!/function speak\(/.test(t) || !/function voiceToggle\(/.test(t)) bad.push(f + " เสียงพูดแนะนำหายไป");
+      if (!/function rcAck\(/.test(t) || !t.includes('speak("รับทราบ "+nm,{force:true});'))
+        bad.push(f + " ไม่มีการทวนกลับเมื่อรับคำสั่ง");
+      if (!t.includes('if(typeof rcAck==="function")rcAck(k);')) bad.push(f + " remoteFire ไม่ทวนกลับก่อนลงมือ");
+      if (!/function remoteOK\(\)/.test(t) || !/if\(typeof remoteOK==="function"&&!remoteOK\(\)\)/.test(t))
+        bad.push(f + " ไม่มีประตูเดียวที่ปิดท่าทางในโหมดผู้ดูแล");
+      if (!/function spokenPrompt\(/.test(t)) bad.push(f + " หน้ายืนยันไม่พูดทวน");
+      if (!/var RC_HELP=/.test(t) || !t.includes("+RC_HELP,{force:true})")) bad.push(f + " ปุ่มช่วยเหลือไม่อธิบายท่าทาง");
+      if ((t.match(/rcStart\(\);/g) || []).length < 4) bad.push(f + " หน้าที่มีกล้องไม่เปิดป้ายท่าทางครบ");
+    }
+    /* เอกสารต้องเล่าตรงกับแอป */
+    const idx = read("index.html") || "";
+    if (/สั่งงานด้วยเสียง|พูดคำที่แอปบอก|ผู้ช่วยเสียง|คำสั่งเสียง/.test(idx)) bad.push("index.html ยังบอกว่าสั่งงานด้วยเสียงได้");
+    if (!/ยกมือ/.test(idx)) bad.push("index.html ไม่ได้อธิบายการสั่งด้วยท่าทางยกมือ");
+    for (const [g, re] of [
+      ["tools/make-manual-pdf.mjs", /พูดว่า|พูดคำที่แอปบอก|พูดแล้วแอปไม่ตอบ|คำสั่งเสียง/],
+      ["tools/make-fieldtest-pdf.mjs", /\["เสียง", "ยกมือ"|คำสั่งเสียง|สั่งด้วยเสียง/],
+      ["tools/make-pitch-kit.mjs", /เสียงสั่งงาน|สั่งงานด้วยเสียง|คำสั่งเสียง/],
+      ["README.md", /สั่งงานด้วยเสียง|คำสั่งเสียง|Web Speech/],
+    ]) if (re.test(read(g) || "")) bad.push(g + " ยังสอนให้สั่งด้วยเสียง");
+    req(7, "X-131", "ถอดระบบรู้จำเสียงออกทั้งหมด คงเสียงพูดแนะนำและการทวนกลับ ใช้ท่าทางยกมือ รีโมต และปุ่มแทน",
+        bad.length ? "FAIL" : "PASS",
+        bad.length ? bad.join(" · ")
+                   : "ไม่มี SpeechRecognition และไมค์ในทั้งสองแอป · ทุกคำสั่งทวนกลับด้วย รับทราบ · เอกสารทุกฉบับเล่าตรงกัน");
+    if (bad.length) finding("HIGH", "X-131", "ระบบรู้จำเสียงกลับมา หรือเอกสารยังสอนให้สั่งด้วยเสียง",
+      "ผู้ใช้จะกลับไปเจออาการ พูดแล้วไม่ฟัง ที่เจ้าของระบบสั่งให้ถอดออก หรืออ่านคู่มือแล้วพยายามพูดสั่งทั้งที่แอปไม่ฟังแล้ว",
+      bad.join(" · "), "ห้ามนำ Web Speech API กลับมา ให้ทุกคำสั่งมาจากท่าทาง รีโมต หรือปุ่ม และแก้เอกสารให้ตรงกับแอป");
   }
 
   /* ---- ภาษาที่ห้ามใช้กับผู้ใช้ (NICE ไม่แนะนำให้แสดงความน่าจะเป็นว่าจะหกล้ม) ---- */

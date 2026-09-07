@@ -188,7 +188,7 @@ body.camhalf .hudbot{display:none}
 .camhalfpane .chk{display:flex;gap:11px;align-items:flex-start;font-size:15px;line-height:1.6;
   background:var(--surf2);border-radius:14px;padding:13px 15px;margin:0}
 .camhalfpane .chk input{width:26px;height:26px;flex:none;margin-top:1px}
-.vcline{display:flex;align-items:center;gap:8px;font-size:13.5px;color:var(--brand2);
+.vcline-retired{display:none;
   background:#EEF4FF;border:1px solid #CFE0FD;border-radius:12px;padding:10px 13px;margin:10px 0 0}
 /* ---------- หน้ารวมหัวข้อ ---------- */
 .sect{display:flex;align-items:center;gap:13px;width:100%;text-align:left;
@@ -1494,499 +1494,118 @@ function statusHTML(){
 /* ---------- เสียงพูดภาษาไทย ---------- */
 var VOICE={on:(function(){try{return localStorage.getItem("csv:voice")!=="off"}catch(e){return true}})()};
 /* ============================================================
-   สั่งงานด้วยเสียง รุ่นที่ 3 — "ระบบเป็นผู้ฟัง คนเป็นผู้สั่ง"
+   สั่งงานระยะไกลโดยไม่ใช้เสียง — "ระบบเป็นผู้พูด คนเป็นผู้ยกมือ"
    ------------------------------------------------------------
-   สิ่งที่รุ่นก่อนพังจริง และรุ่นนี้แก้ตรงจุด
+   ระบบรู้จำเสียง (Web Speech API) ถูกถอดออกทั้งหมดเมื่อ 4 ก.ย. 2569
+   ตามคำสั่งเจ้าของระบบ เพราะไม่เสถียร: ภาษาไทยไม่มีชุดถอดความในเครื่อง
+   เสียงต้องวิ่งไปเซิร์ฟเวอร์ และในบ้านจริงมีทีวี พัดลม คนคุย ผลคือ
+   "พูดแล้วไม่ฟัง" หรือ "ฟังผิดเป็นคำอื่น" ซ้ำ ๆ จนผู้สูงอายุเลิกใช้
+   กล้องที่เปิดอยู่แล้วเห็นมือชัดกว่าไมค์ได้ยินเสียงเสมอ และทำงานในเครื่อง
 
-   (1) ระบบ "ปิดหู" ขณะตัวเองพูด — โค้ดเดิมทิ้งเสียงเข้าทั้งหมด
-       ระหว่าง speechSynthesis กำลังทำงาน ประโยคแนะนำของระบบยาว
-       หลายวินาที ผู้ใช้ที่พูดคำสั่งช่วงนั้นจึงถูกทิ้งทุกครั้ง
-       รุ่นนี้ฟังตลอดเวลา แล้วใช้ "ตัวกรองเสียงสะท้อน" แทน:
-       จำข้อความที่ระบบเพิ่งพูด ถ้าสิ่งที่ได้ยินตรงกับของตัวเองจึงข้าม
-       ผู้ใช้พูดแทรกได้ทันทีโดยไม่ต้องรอระบบพูดจบ
-
-   (2) อ่านผลระหว่างพิมพ์ (interim) — ข้อความยังไม่นิ่ง เปลี่ยนไปมา
-       ทำให้จับคำผิดและสั่งซ้ำ รุ่นนี้ตัดสินใจจาก "ผลสุดท้าย" เท่านั้น
-       ส่วนผลระหว่างทางเอาไปแสดงบนจอให้เห็นว่าระบบได้ยินอะไรอยู่
-
-   (3) คำสั่งชนกัน — ของเดิมกฎ "ไม่ผ่าน" มีคำว่า จับ (จับพยุง)
-       เมื่อผู้ใช้พูด "เริ่มจับเวลา" ระบบจึงตีเป็น "ไม่ผ่าน" ทันที
-       รุ่นนี้เขียนกฎใหม่ให้ตรงคำ และทดสอบประโยคที่เคยชนกันไว้ครบ
-
-   (4) ไมค์ตายเงียบ — Chrome ปิดการฟังเองเมื่อเงียบนาน หรือเมื่อ
-       เกิด no-speech/network ของเดิมสั่ง start() ซ้ำทันทีจนเกิด
-       InvalidStateError แล้วหยุดไปเลย รุ่นนี้มีตัวกันซ้อนและต่อชีวิต
-       ให้เอง พร้อมป้ายบนจอบอกสถานะไมค์ตลอดเวลา
-
-   ทุกคำสั่งมีปุ่มบนหน้าจอทดแทนเสมอ เครื่องที่ไม่รองรับเสียงใช้ได้ครบ
+   สิ่งที่ยังอยู่เหมือนเดิม
+     · เสียงพูดแนะนำทุกขั้น (speak) และการทวนกลับว่าระบบรับคำสั่งอะไรไป (rcAck)
+     · ทุกคำสั่งมีปุ่มบนหน้าจอเสมอ
+   สิ่งที่ใช้แทนการพูด
+     · ยกมือข้างเดียวค้างไว้ = คำสั่งหลักของขั้นนั้น (บันทึก เริ่ม ผ่าน ต่อไป จบ)
+     · ยกสองมือค้างไว้      = คำสั่งตรงข้าม (ไม่ผ่าน ทำใหม่ หยุด)
+     · ปุ่มรีโมตบลูทูธ       = คำสั่งหลัก (ดู remoteFire)
+   ไม่มีการเปิดไมโครโฟนที่ใดในไฟล์นี้อีกต่อไป
    ============================================================ */
-var VC={rec:null,on:false,handler:null,lastFire:0,lastHeard:"",live:"",
-        starting:false,echo:[],reviveT:null,
-        supported:!!(window.SpeechRecognition||window.webkitSpeechRecognition)};
+var RC={on:false,last:"",lastAt:0};
+/* หน้าทดลองไม่มีโหมดผู้ดูแล — คงประตูเดียวกันกับแอปสมาชิกไว้ ให้ stepBegin/remoteFire
+   ผ่านเงื่อนไขเดียวกัน และเปิดโหมดได้ทันทีถ้าต่อสวิตช์ภายหลัง */
+var CARER={on:false};
+function remoteOK() { return !CARER.on }
 
-/* คำสั่งที่รองรับ — สั้น จำนวนน้อย และไม่ชนกัน
-   ลำดับสำคัญ: ตรวจคำที่เจาะจงกว่าก่อนเสมอ
-   (บันทึกท่านั่ง/ท่ายืน ต้องมาก่อน "เริ่ม" · "ไม่ผ่าน" ต้องมาก่อน "ผ่าน") */
-var VC_CMDS=[
-  {k:"confirm", re:/ยืนยัน|คอนเฟิร์ม/, ack:null},
-  {k:"sit",   re:/(บันทึก|เก็บ|จำ).{0,4}(ท่า|ค่า)?นั่ง|นั่งแล้ว|บันทึกนั่ง/,  ack:"รับทราบ กำลังบันทึกท่านั่ง"},
-  {k:"stand", re:/(บันทึก|เก็บ|จำ).{0,4}(ท่า|ค่า)?ยืน|ยืนแล้ว|บันทึกยืน/,     ack:"รับทราบ กำลังบันทึกท่ายืน"},
-  {k:"stop",  re:/หยุด|ยกเลิก|พอแล้ว|พอก่อน/,                                ack:"รับทราบ หยุดการทดสอบ"},
-  {k:"fail",  re:/ไม่ผ่าน|ไม่ได้|ทำไม่ไหว|ล้ม|เสียหลัก|ต้องพยุง|จับราว/,        ack:"รับทราบ บันทึกว่าไม่ผ่าน"},
-  {k:"again", re:/ทำใหม่|ลองใหม่|เริ่มใหม่|อีกครั้ง|ใหม่อีก/,                   ack:"รับทราบ ทำท่านี้ใหม่"},
-  {k:"pass",  re:/ผ่าน|ทำได้|ได้แล้ว|ครบแล้ว|ยืนได้/,                          ack:"รับทราบ บันทึกว่าผ่าน"},
-  {k:"next",  re:/ทำต่อ|ต่อไป|ถัดไป|ไปต่อ|ท่าต่อไป/,                          ack:"รับทราบ ไปขั้นตอนต่อไป"},
-  {k:"help",  re:/ช่วยเหลือ|ช่วยด้วย|มีคำสั่งอะไร|คำสั่ง/,                      ack:null},
-  {k:"done",  re:/จบ|เสร็จแล้ว|เรียบร้อย/,                                    ack:"รับทราบ บันทึกผล"},
-  {k:"start", re:/เริ่ม|พร้อมแล้ว|สตาร์ท|เอาเลย|ลุยเลย/,                       ack:"รับทราบ เริ่มจับเวลา"}
-];
-/* ระบบบอกเองทุกขั้นว่าให้พูดคำไหน ข้อความนี้จึงเป็นแค่ตัวช่วยเมื่อผู้ใช้ขอ */
-var VC_HELP="ระบบจะบอกทุกขั้นว่าให้พูดคำว่าอะไร ส่วนใหญ่คือ บันทึก หรือ เริ่ม "+
-            "ถ้าจะทำท่านั้นใหม่ พูดว่า ทำใหม่ ถ้าจะเลิก พูดว่า หยุด "+
-            "ตอนถามผลให้พูดว่า ผ่าน หรือ ไม่ผ่าน ทุกคำสั่งมีปุ่มบนหน้าจอด้วย";
-/* ชื่อคำสั่งสำหรับทวนกลับ — ผู้ใช้ต้องได้ยินว่าระบบเข้าใจว่าอะไร ก่อนจะยืนยัน */
-var VC_NAMES={start:"เริ่มจับเวลา",sit:"บันทึกท่านั่ง",stand:"บันทึกท่ายืน",
-              pass:"บันทึกว่าผ่าน",fail:"บันทึกว่าไม่ผ่าน",again:"ทำท่านี้ใหม่",
-              next:"ไปขั้นตอนต่อไป",done:"จบและบันทึกผล"};
-/* คำสั่งที่ทำทันทีไม่ต้องทวน: หยุด (เรื่องความปลอดภัย ต้องไม่มีขั้นกลาง) และ ช่วยเหลือ */
-var VC_IMMEDIATE={stop:1,help:1};
-function vcNorm(t){return String(t||"").replace(/[\s\u200b.,!?ๆฯ]/g,"")}
-function vcParse(t){
-  t=vcNorm(t);
-  if(!t)return null;
-  for(var i=0;i<VC_CMDS.length;i++)if(VC_CMDS[i].re.test(t))return VC_CMDS[i].k;
-  return null;
+/* ชื่อสั้นของคำสั่ง ใช้ทั้งบนป้ายบอกท่าทางและในเสียงทวนกลับ */
+var RC_NM={record:"บันทึก",start:"เริ่ม",pass:"ผ่าน",next:"ต่อไป",done:"จบ",
+           fail:"ไม่ผ่าน",redo:"ทำใหม่",stop:"หยุด"};
+var RC_HELP="ยกมือข้างเดียวค้างไว้หนึ่งวินาที คือคำสั่งหลักของขั้นนั้น เช่น เริ่ม หรือ ผ่าน "+
+            "ยกสองมือค้างไว้ คือคำสั่งตรงข้าม เช่น ไม่ผ่าน ทำใหม่ หรือ หยุด "+
+            "ทุกคำสั่งมีปุ่มบนหน้าจอด้วย";
+/* ทวนกลับทันทีที่รับท่าทาง — ผู้ใช้ยืนห่างจอ ต้องได้ยินว่าระบบรับคำสั่งแล้ว
+   ประโยคถัดไปของหน้าจอ (เช่น "เริ่มได้เลย") จะต่อท้าย ไม่ตัดประโยคนี้ทิ้ง
+   เพราะ speak() เห็น SPK.hold แล้วไม่ยกเลิกคิว · การกระทำเริ่มทันที ไม่รอเสียง */
+function rcAck(cmd){
+  var nm=RC_NM[cmd]; if(!nm)return;
+  RC.last=nm; RC.lastAt=Date.now();
+  SPK.hold=Date.now()+1400;
+  speak("รับทราบ "+nm,{force:true});
+  rcRender();
 }
-function vcAck(cmd){
-  /* ตอบตามหน้าจอปัจจุบัน ดีกว่าอ่านรายการคำสั่งทั้งหมดซึ่งยาวและไม่ตรงบริบท */
-  if(cmd==="help"){speak(vcReply("cmds")||VC_HELP,{force:true});return}
-  for(var i=0;i<VC_CMDS.length;i++)
-    if(VC_CMDS[i].k===cmd&&VC_CMDS[i].ack){speak(VC_CMDS[i].ack);return}
-}
-/* ---- ตัวกรองเสียงสะท้อน: จำสิ่งที่ระบบเพิ่งพูด ไม่ให้สั่งตัวเอง ---- */
-function vcRemember(text){
-  var t=vcNorm(text); if(!t)return null;
-  /* หมดอายุแข็ง 9 วินาทีตั้งแต่เริ่มพูด — เดิมตั้ง Infinity แล้วรอเหตุการณ์พูดจบ
-     แต่บางเครื่องเหตุการณ์นั้นไม่มา (โดยเฉพาะเมื่อถูก cancel แทรก)
-     รายการจึงค้างถาวร และคำสั่งจริงที่บังเอิญเป็นส่วนหนึ่งของประโยคระบบ
-     เช่น "ผ่าน" ใน "รับทราบ บันทึกว่าผ่าน" ถูกทิ้งตลอดไป = อาการ "พูดแล้วไม่ฟัง" */
-  var e={t:t,until:Date.now()+9000};
-  VC.echo.push(e);
-  if(VC.echo.length>6)VC.echo.shift();
-  return e;
-}
-function vcIsEcho(heard){
-  var h=vcNorm(heard), now=Date.now();
-  if(!h)return false;
-  for(var i=0;i<VC.echo.length;i++){
-    var e=VC.echo[i];
-    if(now>e.until)continue;
-    /* นับเป็นเสียงสะท้อนเฉพาะเมื่อได้ยิน "ก้อนใหญ่" ของประโยคที่ระบบพูด
-       คำสั่งสั้น ๆ เช่น "ผ่าน" ที่บังเอิญอยู่ในประโยคระบบ ต้องไม่ถูกทิ้ง */
-    if(e.t.indexOf(h)>=0&&(h.length>=8||h.length/e.t.length>=0.6))return true;
-  }
-  return false;
-}
+function normText(t){return String(t||"").replace(/[\s​.,!?ๆฯ]/g,"")}
 
 /* ============================================================
-   ผู้ช่วยเสียงแบบสนทนา
+   เครื่องสถานะขั้นตอน — แต่ละหน้าประกาศว่าตอนนี้รับคำสั่งอะไรได้บ้าง
    ------------------------------------------------------------
-   เดิมรับได้เฉพาะ 11 คำสั่งตายตัว พูดนอกรายการแล้วเงียบ ผู้ใช้ไม่รู้ว่า
-   ระบบไม่เข้าใจ หรือไมค์ไม่ทำงาน จึงพูดซ้ำไปเรื่อย ๆ
-   รอบนี้เพิ่มสามชั้น
-     1. ตัดคำลงท้ายและคำฟุ่มเฟือยก่อนจับคู่ ("เริ่มได้เลยนะครับ" = "เริ่ม")
-     2. ตอบคำถามได้ โดยดึงคำตอบจากสถานะจริงของหน้าจอ ไม่ได้แต่งขึ้นเอง
-     3. ฟังไม่เข้าใจ ให้บอกว่าตอนนี้พูดอะไรได้บ้าง แทนการเงียบ
-
-   ทำไมไม่ต่อ AI ภายนอกให้คุยอิสระ
-   ------------------------------------------------------------
-   ระบบนี้ประกาศไว้ว่าไม่วินิจฉัยและไม่แนะนำเรื่องยา ถ้าต่อโมเดลภาษา
-   ให้ตอบอิสระ จะไม่มีทางรับประกันว่าคำตอบไม่ข้ามเส้นนั้น และผู้สูงอายุ
-   แยกไม่ออกว่าคำตอบไหนมาจากกฎที่ตรวจสอบแล้ว คำตอบไหนโมเดลแต่งเอง
-   คำตอบทุกประโยคที่นี่จึงเขียนไว้ล่วงหน้าและตรวจสอบได้ทั้งหมด
+   spec = {id, cue, hint, quiet, on:{record|start|pass|next|done|fail|redo|stop}}
+   cue  = ประโยคที่พูดตอนเข้าขั้นตอน · hint = ประโยคที่ทวนเมื่อเงียบนาน
+   ท่าทางและรีโมตดู STEP.on ว่าขั้นนี้รับคำสั่งไหน (stepPrimary / stepSecondary)
+   เงียบเกิน 13 วินาที = ทวนสิ่งที่ต้องทำให้อีกครั้ง (มากสุด 2 รอบ)
+   เพราะความเงียบทำให้ผู้สูงอายุไม่รู้ว่าระบบรออะไรอยู่
    ============================================================ */
-
-/* คำลงท้าย คำฟุ่มเฟือย และคำถามนำ ที่ตัดทิ้งก่อนจับคู่ */
-var VC_FILLER=/^(ก็|แล้ว|เอา|เอาละ|โอเค|โอเคนะ|อืม|เอ่อ|คือ|งั้น|ช่วย|ขอ|ที|หน่อย)+/;
-var VC_TAIL=/(ครับ|ค่ะ|คะ|นะ|น่ะ|จ้า|จ้ะ|ฮะ|ละ|แล้ว|เลย|ด้วย|หน่อย|ที|สิ|ซิ|ก่อน)+$/;
-/* ตัดซ้ำหลายชั้น เพราะคนพูดติดกันได้ เช่น "เริ่มเลยนะครับ" */
-function vcStrip(t){
-  t=vcNorm(t);
-  for(var i=0;i<4;i++){
-    var b=t;
-    t=t.replace(VC_FILLER,"").replace(VC_TAIL,"");
-    if(t===b)break;
-  }
-  return t||vcNorm(arguments[0]);
-}
-
-/* ---------- คำถามที่ตอบได้ ----------
-   ทุกคำตอบดึงจากสถานะจริง ไม่ใช่ข้อความตายตัวที่อาจไม่ตรงกับหน้าจอ */
-var VC_ASK=[
-  {k:"where",  re:/(ตอนนี้|นี่)?(อยู่|ทำ)(ตรงไหน|ขั้นไหน|อะไร|หน้าไหน)|ถึงไหนแล้ว|นี่ขั้นตอนอะไร/},
-  {k:"how",    re:/ทำ(ยัง|ไง|อย่างไร)|ต้องทำอะไร|เริ่มยังไง|ทำแบบไหน|วิธีทำ/},
-  {k:"why",    re:/ทำไม(ต้อง)?(ทำ|วัด|ถาม)|เพื่ออะไร|มีประโยชน์อะไร/},
-  {k:"skip",   re:/ข้าม(ได้|ไหม|มั้ย)|ไม่ทำ(ได้|ไหม)|ทำไม่ไหว(ได้ไหม)?|ขอข้าม/},
-  {k:"left",   re:/เหลือ(อีก)?(กี่|เท่าไร)|อีกกี่(ข้อ|ขั้น|อัน)|จะเสร็จเมื่อไร|นานไหม/},
-  {k:"result", re:/ผล(เป็น|ออกมา)?(ยังไง|อย่างไร|เท่าไร)|ได้เท่าไร|คะแนน(เท่าไร|เป็นไง)/},
-  {k:"repeat", re:/พูดอีก|ว่า(ไง|อะไร)นะ|ไม่ได้ยิน|ทวนอีก|บอกอีก|ขอฟังอีก/},
-  {k:"cmds",   re:/พูดอะไรได้|สั่งอะไรได้|มีคำสั่งอะไร|ทำอะไรได้บ้าง/},
-  {k:"safe",   re:/(ปลอดภัย|อันตราย)(ไหม|มั้ย|หรือเปล่า)|จะล้มไหม|เสี่ยงไหม/},
-  {k:"who",    re:/(ใคร|ระบบไหน)(ดู|เห็น|รู้)|ข้อมูล(ไป|ส่ง)ไหน|ใครเห็นข้อมูล/}
-];
-function vcAsk(t){
-  t=vcStrip(t); if(!t)return null;
-  for(var i=0;i<VC_ASK.length;i++) if(VC_ASK[i].re.test(t)) return VC_ASK[i].k;
-  return null;
-}
-
-/* บริบทของหน้าจอ ณ ตอนนี้ — ให้คำตอบตรงกับสิ่งที่ผู้ใช้เห็นจริง */
-function vcCtx(){
-  var c={screen:(typeof S!=="undefined"&&S.screen)||"", say:[], step:null, left:null, last:VC.lastSpoken||""};
-  try{
-    if(typeof ASSESS_SECTIONS!=="undefined"&&typeof sectState==="function"){
-      var todo=ASSESS_SECTIONS.filter(function(x){return sectState(x)==="todo"});
-      c.left=todo.length;
-      c.step=(todo[0]||{}).t||null;
-    }
-  }catch(e){}
-  /* คำสั่งที่ใช้ได้จริง ณ หน้านี้ */
-  if(VC.pending) c.say=["ยืนยัน","ยกเลิก"];
-  else if(/calib|camtest|test/.test(c.screen)) c.say=["บันทึกท่านั่ง","บันทึกท่ายืน","หยุด"];
-  else if(/balance/.test(c.screen))            c.say=["ผ่าน","ไม่ผ่าน","ทำใหม่","หยุด"];
-  else if(/tug|assessTimer/.test(c.screen))    c.say=["เริ่ม","หยุด","ทำใหม่"];
-  else                                          c.say=["เริ่ม","ทำต่อ","หยุด"];
-  return c;
-}
-
-/* ---------- คำตอบ ----------
-   เขียนไว้ล่วงหน้าทุกประโยค ตรวจสอบได้ ไม่มีการสร้างข้อความใหม่ตอนรัน */
-function vcReply(kind){
-  var c=vcCtx();
-  var list=function(a){ return a.length>1 ? a.slice(0,-1).join(" ") + " หรือ " + a[a.length-1] : (a[0]||"") };
-  switch(kind){
-    case "where":
-      return c.step ? ("ตอนนี้อยู่ที่หัวข้อ "+c.step+(c.left!=null?" เหลืออีก "+c.left+" หัวข้อ":""))
-                    : "ตอนนี้อยู่ในหน้าทดสอบ ถ้าพร้อมแล้วพูดว่า เริ่ม";
-    case "how":
-      return "ทำตามที่หน้าจอบอกได้เลย เมื่อพร้อมพูดว่า "+list(c.say)+
-             " ทุกอย่างมีปุ่มบนหน้าจอด้วย ถ้าพูดไม่สะดวกให้กดปุ่มแทนได้";
-    case "why":
-      return "การวัดนี้ช่วยให้ทีมดูแลเห็นการเปลี่ยนแปลงของท่านได้เร็วขึ้น "+
-             "ผลที่ได้ใช้เพื่อการติดตามและวางแผนดูแล ไม่ใช่การวินิจฉัยโรค "+
-             "และไม่ถูกใช้ปรับเบี้ยหรือพิจารณาการเคลม";
-    case "skip":
-      return "ข้ามได้ครับ ถ้าไม่ไหวอย่าฝืน ระบบจะบันทึกว่ายังไม่ได้วัดข้อนี้ "+
-             "และทีมดูแลจะเห็นว่าต้องช่วยเรื่องอะไร พูดว่า หยุด เพื่อข้าม";
-    case "left":
-      return c.left!=null ? ("เหลืออีก "+c.left+" หัวข้อ"+(c.step?" ข้อถัดไปคือ "+c.step:""))
-                          : "ทำตามหน้าจอไปทีละขั้น ระบบเก็บความคืบหน้าให้ตลอด";
-    case "result":
-      return "ผลจะขึ้นให้ดูเมื่อบันทึกครบทุกหัวข้อแล้ว ระหว่างนี้ยังไม่สรุปผลให้ "+
-             "เพราะต้องดูหลายด้านประกอบกัน";
-    case "repeat":
-      return c.last || "ยังไม่มีข้อความก่อนหน้าให้ทวน";
-    case "cmds":
-      return "ตอนนี้พูดได้ว่า "+list(c.say)+" หรือถามว่า ทำยังไง ข้ามได้ไหม เหลืออีกกี่ข้อ";
-    case "safe":
-      return "ถ้ารู้สึกเวียนหัว เจ็บหน้าอก หรือหายใจไม่สะดวก ให้หยุดทันทีและนั่งลง "+
-             "พูดว่า หยุด ได้ตลอดเวลา ความปลอดภัยสำคัญกว่าผลการวัด";
-    case "who":
-      return "ภาพจากกล้องประมวลผลในเครื่องนี้ ไม่ส่งออกไปที่ใด "+
-             "สิ่งที่บันทึกคือตัวเลขและคำตอบของท่าน ทีมดูแลที่ท่านยินยอมเท่านั้นที่เห็นได้ "+
-             "บริษัทประกันเห็นเฉพาะภาพรวมที่ไม่ระบุตัวตน";
-  }
-  return null;
-}
-
-/* ฟังไม่เข้าใจ — บอกว่าตอนนี้พูดอะไรได้ แทนการเงียบ
-   จำกัดความถี่ ไม่ให้พูดรัวจนกวนใจเมื่อไมค์รับเสียงรบกวนต่อเนื่อง */
-function vcNotUnderstood(heard){
-  var now=Date.now();
-  if(now-(VC.lastMiss||0) < 6000) return;
-  VC.lastMiss=now;
-  var c=vcCtx();
-  speak("ยังไม่เข้าใจที่พูด ตอนนี้พูดได้ว่า "+
-        (c.say.length>1 ? c.say.slice(0,-1).join(" ")+" หรือ "+c.say[c.say.length-1] : c.say[0]) +
-        " หรือถามว่า ทำยังไง");
-}
-
-/* ============================================================
-   ตัดสินใจจากประโยคที่ได้ยิน — วงจรทวนคำสั่ง
-   ------------------------------------------------------------
-   คำสั่งที่มีผลต่อการบันทึก (เริ่ม/ผ่าน/ไม่ผ่าน/บันทึกท่า/ฯลฯ)
-   ระบบจะ "ทวนกลับ" ก่อน แล้วรอคำว่า ยืนยัน จึงทำจริง
-   กันเสียงแวดล้อมหรือการได้ยินผิดสั่งระบบเอง
-   "หยุด" ทำทันทีเสมอ — เรื่องความปลอดภัยต้องไม่มีขั้นกลาง
-   ปุ่มบนหน้าจอไม่ผ่านขั้นนี้ (การกดคือความตั้งใจอยู่แล้ว)
-   ============================================================ */
-/* ============================================================
-   สั่งงานด้วยเสียงแบบทีละขั้น — จับรูปแบบคำล้วน ๆ ไม่ใช่การสนทนา
-   ------------------------------------------------------------
-   เดิม: ฟังคำสั่งได้ตลอดเวลา แล้วทวนกลับให้ผู้ใช้พูด "ยืนยัน" ซ้ำอีกครั้ง
-   ปัญหาที่ผู้ใช้เจอจริง: ประโยคทวนยาวราว 45 ตัวอักษร ด่านกันฟังเสียงตัวเอง
-   จึงปิดหูระบบไปราว 5.2 วินาที คนที่ตอบ "ยืนยัน" ทันทีตามธรรมชาติจะถูกทิ้ง
-   เงียบ ๆ ไม่มีเสียงตอบใด ๆ พอพูดซ้ำ คำสั่งที่ค้างก็หมดอายุไปแล้ว
-   ผู้ใช้จึงเห็นเป็น "พูดแล้วระบบไม่ฟังเลย"
-
-   ใหม่: แต่ละขั้นตอนประกาศชัดว่าตอนนี้ให้พูดคำว่าอะไร รับไม่กี่คำ
-   พูดแล้วทำทันที ไม่ต้องยืนยันซ้ำ
-   ทิ้งการยืนยันได้เพราะทุกอย่างในขั้นตอนตรวจร่างกายย้อนกลับได้ด้วยคำว่า
-   "ทำใหม่" และระบบบอกผลด้วยเสียงทุกครั้งที่ทำ ผู้ใช้จึงรู้ทันทีถ้าผิด
-   ต่างจากคำสั่งที่ลบข้อมูลจริงซึ่งไม่มีในหน้าเหล่านี้
-
-   เงียบเกิน 13 วินาที = ทวนสิ่งที่ต้องพูดให้อีกครั้ง (มากสุด 2 รอบ)
-   เพราะความเงียบทำให้ผู้สูงอายุไม่รู้ว่าระบบรออะไรอยู่ หรือไมค์ตายไปแล้ว
-
-   ไม่มีการเรียกโมเดลภาษาหรือบริการภายนอกใด ๆ ทั้งสิ้น
-   ============================================================ */
-var VC_INTENT=[
-  /* ลำดับสำคัญ คำที่ยาวกว่าและเจาะจงกว่าต้องมาก่อนเสมอ
-     "ไม่ได้ยิน" ต้องมาก่อน "ไม่ได้" · "ไม่ผ่าน" ก่อน "ผ่าน" · "เริ่มใหม่" ก่อน "เริ่ม" */
-  ["repeat",/ไม่ได้ยิน|ทวนอีกที|พูดอีกที|ว่าไงนะ|อะไรนะ|ซ้ำอีกที/],
-  /* รอก่อน = ขอเวลาอีกนิด ใช้ยกเลิกการนับถอยหลัง ต้องมาก่อน record
-     เพราะ "ยังไม่พร้อม" มีคำว่า พร้อม ซึ่งเป็นคำของ record */
-  ["wait",  /รอก่อน|รอแป๊บ|ยังไม่พร้อม|เดี๋ยวก่อน|ช้าก่อน|อย่าเพิ่ง/],
-  ["stop",  /หยุด|ยกเลิก|พอแล้ว|พอก่อน|เลิกแล้ว|ออกก่อน/],
-  ["fail",  /ไม่ผ่าน|ไม่ไหว|ทำไม่ได้|ไม่ได้เลย|ล้ม|เสียหลัก|ต้องพยุง|จับราว/],
-  ["redo",  /ทำใหม่|ลองใหม่|เริ่มใหม่|บันทึกใหม่|อีกครั้ง|ใหม่อีก|ล้างค่า|แก้ไข/],
-  ["next",  /ต่อไป|ถัดไป|ไปต่อ|ทำต่อ|ท่าต่อไป|ข้ามไป/],
-  ["pass",  /ผ่าน|ทำได้|ได้แล้ว|ยืนได้|ครบแล้ว|สำเร็จ/],
-  ["record",/บันทึก|เก็บค่า|เก็บท่า|จำท่า|โอเค|ตกลง|พร้อมแล้ว|เรียบร้อย/],
-  ["start", /เริ่ม|สตาร์ท|ลุยเลย|เอาเลย|ไปเลย|จับเวลา/]
-];
-function vcIntent(txt){
-  var t=vcNorm(txt); if(!t)return null;
-  for(var i=0;i<VC_INTENT.length;i++)if(VC_INTENT[i][1].test(t))return VC_INTENT[i][0];
-  return null;
-}
-
-var STEP={id:null,on:null,cue:"",hint:"",say:"",quiet:false,t0:0,nudges:0,timer:null,lastMiss:0};
+var STEP={id:null,on:null,cue:"",hint:"",quiet:false,t0:0,nudges:0,timer:null};
 function stepBegin(spec){
   stepStop();
+  /* โหมดผู้ดูแลไม่เปิดรับท่าทางและรีโมต ผู้ดูแลกดปุ่มบนจอแทน แต่ยังพูดบอกขั้นตอน
+     เพราะผู้ทดสอบยืนห่างจอและต้องได้ยินว่าต้องทำอะไรต่อ */
+  if(typeof remoteOK==="function"&&!remoteOK()){
+    if(spec&&spec.cue)speak(spec.cue,{force:true});
+    return;
+  }
   STEP.id=spec.id; STEP.on=spec.on||{};
   STEP.cue=spec.cue||""; STEP.hint=spec.hint||spec.cue||"";
-  STEP.t0=Date.now(); STEP.nudges=0; STEP.lastMiss=0;
-  /* quiet = หน้าจอนั้นมีการทวนของตัวเองอยู่แล้ว อย่าทวนซ้อน */
-  STEP.quiet=!!spec.quiet; STEP.say=spec.say||"";
-  if(typeof vcRender==="function")vcRender();
+  STEP.t0=Date.now(); STEP.nudges=0;
+  STEP.quiet=!!spec.quiet;
+  rcRender();
   if(STEP.cue)speak(STEP.cue,{force:true});
   STEP.timer=setInterval(stepTick,1000);
 }
 function stepStop(){
   if(STEP.timer){clearInterval(STEP.timer);STEP.timer=null}
-  STEP.id=null;STEP.on=null;STEP.cue="";STEP.hint="";STEP.say="";STEP.quiet=false;
-  if(typeof vcRender==="function")vcRender();
+  STEP.id=null;STEP.on=null;STEP.cue="";STEP.hint="";STEP.quiet=false;
+  rcRender();
 }
 function stepTick(){
   if(!STEP.id)return;
   /* ไม่ทวนทับตอนระบบกำลังพูดอยู่ และไม่ทวนเกินสองรอบ ไม่งั้นกลายเป็นรบกวน */
   if(STEP.quiet)return;
   if(Date.now()-STEP.t0<13000||STEP.nudges>=2)return;
-  if(vcBlockedBy()==="tts")return;
+  if(ttsBusy())return;
   STEP.nudges++; STEP.t0=Date.now();
   speak(STEP.hint,{force:true});
 }
-/* ผู้ใช้พูดมาแล้ว — ขั้นตอนนี้รับคำนั้นไหม */
-function stepHear(txt){
-  if(!STEP.id||!STEP.on)return null;
-  var k=vcIntent(txt);
-  if(!k)return null;
-  if(k==="repeat"){STEP.t0=Date.now();STEP.nudges=0;speak(STEP.hint,{force:true});return "repeat"}
-  var fn=STEP.on[k];
-  if(!fn)return null;                      /* ขั้นตอนนี้ไม่รับคำนี้ */
-  STEP.t0=Date.now(); STEP.nudges=0;
-  fn();
-  return k;
-}
-/* ได้ยินเสียงพูดแต่ไม่ใช่คำที่ขั้นตอนนี้รับ — บอกสั้น ๆ ดีกว่าเงียบ */
-function stepNudge(){
+/* ระบบกำลังพูดอยู่ไหม — ใช้กันการทวนซ้อนเสียงตัวเอง
+   speechSynthesis.speaking ค้างเป็น true ถาวรได้บนบางเครื่อง (บั๊กที่รู้จักกัน)
+   จึงเชื่อได้เฉพาะในเพดานเวลาจากรอบพูดล่าสุด */
+function ttsBusy(){
   var now=Date.now();
-  if(STEP.quiet||now-STEP.lastMiss<7000)return;
-  STEP.lastMiss=now;
-  speak(STEP.hint,{force:true});
+  var speaking=("speechSynthesis" in window&&window.speechSynthesis&&speechSynthesis.speaking);
+  return now<SPK.until||(speaking&&now<SPK.until+2500);
 }
 
-/* ---- รับคำสั่งจากผลชั่วคราว พร้อมกันยิงซ้ำจากผลสุดท้ายที่ตามมาทีหลัง ---- */
-function vcDispatchEarly(txt){
-  if(!STEP.id||!STEP.on)return null;
-  var k=vcIntent(txt);
-  if(!k||!(k==="repeat"||STEP.on[k]))return null;
-  var now=Date.now();
-  if(VC.earlyK===k&&now-(VC.earlyT||0)<2500)return null;   /* ยิงไปแล้ว รอผลสุดท้ายผ่านไปก่อน */
-  var r=vcDispatch(txt);
-  /* ตั้งเครื่องหมายหลังลงมือเสร็จ ไม่ใช่ก่อน ไม่งั้น vcDispatch จะเห็นเครื่องหมาย
-     ที่เราเพิ่งตั้งเอง แล้วปฏิเสธว่าเป็นการยิงซ้ำ กลายเป็นไม่ทำอะไรเลย */
-  VC.earlyK=k; VC.earlyT=Date.now();
-  return r;
-}
-
-/* ---- ตัวรู้จำเสียงส่งคำเดามาหลายแบบ คำที่ถูกไม่ใช่อันแรกเสมอไป ----
-   ชุดคำสั่งของแต่ละขั้นเป็นชุดปิดเล็ก ๆ การไล่ดูทุกคำเดาจึงช่วยได้มาก
-   โดยไม่เพิ่มความเสี่ยง เพราะคำที่ขั้นนั้นไม่รับก็ไม่ถูกทำอยู่ดี */
-function vcPick(res){
-  var first=(res[0]&&res[0].transcript)||"";
-  if(!STEP.id||!STEP.on)return first;
-  var n=Math.min(res.length,5);
-  for(var i=0;i<n;i++){
-    var t=res[i]&&res[i].transcript; if(!t)continue;
-    var k=vcIntent(t);
-    if(k&&(k==="repeat"||STEP.on[k]))return t;
-  }
-  return first;
-}
-
-function vcDispatch(txt){
-  /* ---- ด่านแรก: เชื่อได้ไหมว่านี่คือคนสั่งจริง ----
-     ระหว่างที่ระบบกำลังพูด สิ่งที่ไมค์ได้ยินคือเสียงตัวเอง — ทิ้งทั้งหมด
-     ยกเว้น "หยุด" ให้แทรกได้เสมอ · และถ้าด่าน VAD บอกว่าช่วงที่ผ่านมา
-     ไม่มีเสียงพูดจริงใกล้เครื่อง (เช่นเป็นเสียงทีวีเบา ๆ) ก็ทิ้งเช่นกัน */
-  var blocked=vcBlockedBy();
-  if(blocked){
-    /* "หยุด" ต้องแทรกได้เสมอแม้ระบบกำลังพูด — เป็นทางออกฉุกเฉินของผู้ใช้ */
-    if(!(blocked==="tts"&&vcIntent(txt)==="stop"))return "gated-"+blocked;
-  }
-  if(vcIsEcho(txt))return "echo";
-  /* ---- อยู่ในขั้นตอนที่ประกาศไว้ = ใช้คำสั่งของขั้นตอนนั้น ทำทันที ไม่ต้องยืนยัน ---- */
-  if(STEP.id){
-    /* ผลสุดท้ายที่ตามหลังผลชั่วคราวซึ่งลงมือไปแล้ว ต้องไม่ทำซ้ำอีกรอบ */
-    var ik=vcIntent(txt);
-    if(ik&&VC.earlyK===ik&&Date.now()-(VC.earlyT||0)<2500){VC.earlyK=null;return "already"}
-    VC.lastHeard=String(txt).trim().slice(0,24); VC.live="";
-    var hit=stepHear(txt);
-    if(hit){vcRender();return "step:"+hit}
-    vcRender(); stepNudge();
-    return "step-miss";
-  }
-  /* ตัดคำลงท้ายก่อน แล้วลองจับคำสั่งจากทั้งข้อความเดิมและข้อความที่ตัดแล้ว
-     "เริ่มได้เลยนะครับ" จึงถูกอ่านเป็นคำสั่ง เริ่ม ได้ */
-  var cmd=vcParse(txt)||vcParse(vcStrip(txt));
-  VC.lastHeard=String(txt).trim().slice(0,24);
-  if(!cmd){
-    /* ไม่ใช่คำสั่ง — ลองดูว่าเป็นคำถามไหม แล้วตอบจากสถานะจริงของหน้าจอ */
-    var q=vcAsk(txt);
-    if(q){ var a=vcReply(q); VC.live=""; vcRender(); if(a)speak(a,{force:true}); return "ask:"+q }
-    VC.live="";vcRender();
-    vcNotUnderstood(txt);
-    return null;
-  }
-  var now=Date.now();
-
-  if(cmd==="confirm"){
-    VC.live="";
-    if(!VC.pending){vcRender();return "confirm-none"}
-    /* กันระบบยืนยันตัวเอง: ต้องพ้นช่วงที่เสียงระบบยังพูดอยู่ก่อน */
-    if(now<VC.pending.notBefore||("speechSynthesis" in window&&window.speechSynthesis&&speechSynthesis.speaking)){
-      vcRender();return "confirm-early"}
-    if(now>VC.pending.expires){vcClearPending();vcRender();speak("หมดเวลายืนยัน กรุณาสั่งใหม่");return "confirm-late"}
-    var p=VC.pending; vcClearPending();
-    VC.lastFire=now; vcRender();
-    vcAck(p.cmd);
-    if(VC.handler)VC.handler(p.cmd);
-    return "exec:"+p.cmd;
-  }
-
-  /* หยุด/ยกเลิก ระหว่างรอยืนยัน = ยกเลิกคำสั่งที่ค้าง ไม่ใช่หยุดการทดสอบ */
-  if(cmd==="stop"&&VC.pending){
-    vcClearPending(); VC.live=""; vcRender();
-    speak("ยกเลิกคำสั่งแล้ว");
-    return "canceled";
-  }
-
-  if(now-VC.lastFire<1200){VC.live="";vcRender();return "debounce"}
-
-  if(VC_IMMEDIATE[cmd]){
-    VC.lastFire=now; VC.live=""; vcRender();
-    vcAck(cmd);
-    if(cmd!=="help"&&VC.handler)VC.handler(cmd);
-    return "exec:"+cmd;
-  }
-
-  vcSetPending(cmd);
-  return "pending:"+cmd;
-}
-function vcSetPending(cmd){
-  var now=Date.now();
-  /* notBefore เริ่มที่ +3500 เผื่อเสียงทวนไม่ตอบกลับ — เมื่อพูดจบจริงจะร่นเหลือ +350 */
-  VC.pending={cmd:cmd,expires:now+10000,notBefore:now+3500};
-  VC.live=""; vcRender();
-  if(VC.pendT)clearTimeout(VC.pendT);
-  VC.pendT=setTimeout(function(){
-    if(VC.pending&&Date.now()>=VC.pending.expires){vcClearPending();vcRender()}
-  },10300);
-  speak("ได้ยินคำสั่ง "+(VC_NAMES[cmd]||cmd)+" ถ้าถูกต้อง พูดว่า ยืนยัน",{onDone:function(){
-    if(VC.pending&&VC.pending.cmd===cmd)VC.pending.notBefore=Date.now()+350;
-  }});
-}
-function vcClearPending(){
-  VC.pending=null;
-  if(VC.pendT){clearTimeout(VC.pendT);VC.pendT=null}
-}
-
-/* ---- ป้ายไมค์บนจอ: ผู้ใช้ต้องเห็นตลอดว่าระบบฟังอยู่และได้ยินอะไร ---- */
-function vcMount(){
+/* ---- ป้ายบนจอ: ผู้ใช้ต้องเห็นตลอดว่ายกมือตอนนี้แล้วจะเกิดอะไร ---- */
+function rcMount(){
   var top=document.querySelector(".hudtop"); if(!top)return;
-  if(!document.getElementById("vcbadge")){
+  if(!document.getElementById("rcbadge")){
     var b=document.createElement("span");
-    b.className="hudtag"; b.id="vcbadge";
+    b.className="hudtag"; b.id="rcbadge";
     top.appendChild(b);
   }
-  vcRender();
+  rcRender();
 }
-function vcRender(){
-  var b=document.getElementById("vcbadge"); if(!b)return;
-  if(!VC.supported){b.textContent="🎤 เครื่องนี้ใช้ปุ่มแทนเสียง";return}
-  if(!VC.on){b.textContent="🎤 ปิดอยู่";return}
-  if(VC.pending){b.textContent='🎤 พูดว่า "ยืนยัน" — '+(VC_NAMES[VC.pending.cmd]||VC.pending.cmd);return}
-  /* อยู่ในขั้นตอน = บอกทั้งคำที่ต้องพูด และคำล่าสุดที่ไมค์ได้ยิน
-     ถ้าไม่บอกสิ่งที่ได้ยิน ผู้ใช้แยกไม่ออกว่าไมค์ไม่ทำงาน หรือได้ยินแล้วแต่ไม่เข้าใจ */
-  if(STEP.id&&STEP.say){
-    b.textContent="🎤 “"+STEP.say+"” · "+gestureHint()+
-      (VC.live?" · "+VC.live:(VC.lastHeard?" · ได้ยิน: "+VC.lastHeard:""));
-    return;
-  }
-  b.textContent=VC.live?("🎤 "+VC.live):(VC.lastHeard?("🎤 ได้ยิน: "+VC.lastHeard):"🎤 กำลังฟัง…");
+function rcRender(){
+  var b=document.getElementById("rcbadge"); if(!b)return;
+  if(!RC.on){b.textContent="🙋 ใช้ปุ่มบนจอ";return}
+  var got=(RC.last&&Date.now()-RC.lastAt<2500)?" · รับแล้ว: "+RC.last:"";
+  var g=(typeof gestureHint==="function")?gestureHint():"";
+  b.textContent=(STEP.id&&g)?("🙋 "+g+got):("🙋 ค้างมือไว้ 1 วินาที"+got);
 }
-
-/* ---- เหตุที่ต้องทิ้งสิ่งที่ได้ยิน — คืน null เมื่อรับได้ ----
-   เคยมีชั้น VAD เปิดไมค์เส้นที่สองมาวัดระดับเสียงคู่ขนาน ถอดออกแล้ว
-   เพราะบนมือถือมันแย่งไมค์กับตัวรู้จำเสียง และวัดจริงบนเครื่องพบว่า
-   ไม่เคยเปิดติดด้วยซ้ำ (ready=false) คือได้ความเสี่ยงมาโดยไม่ได้ประโยชน์
-   เหลือด่านเดียวคือช่วงเวลาที่ระบบกำลังพูด ซึ่งพิสูจน์แล้วว่าจำเป็นจริง
-   สำหรับกันไม่ให้ไมค์รับเสียงของระบบเองไปเป็นคำสั่ง */
-function vcBlockedBy(){
-  var now=Date.now();
-  /* speechSynthesis.speaking ค้างเป็น true ถาวรได้บนบางเครื่อง (บั๊กที่รู้จักกัน)
-     ถ้าเชื่อดิบ ๆ ระบบจะหูหนวกถาวร — เชื่อได้เฉพาะในเพดานเวลาจากรอบพูดล่าสุด */
-  var speaking=("speechSynthesis" in window&&window.speechSynthesis&&speechSynthesis.speaking);
-  if(now<SPK.until||(speaking&&now<SPK.until+2500))return "tts";
-  return null;
-}
-
-
-/* ---- ยามเฝ้าไมค์ ----
-   ตัวรู้จำเสียงของเบราว์เซอร์ตายเงียบได้ โดยไม่ส่ง onend หรือ onerror ออกมาเลย
-   (พบบ่อยบน Android เมื่อลำโพงทำงานพร้อมไมค์) เมื่อนั้น VC.starting จะค้างเป็น
-   true ตลอดไป และ vcTryStart จะ return ทิ้งทุกครั้ง = ไมค์ตายถาวรแบบเงียบสนิท
-   จึงต้องมีคนคอยจับเวลา ถ้าไม่มีสัญญาณชีวิตเกิน 9 วินาที ให้ล้มแล้วเริ่มใหม่ */
-function vcTouch(){ VC.lastEvent=Date.now(); }
-function vcWatch(){
-  if(VC.watchT)return;
-  VC.watchT=setInterval(function(){
-    if(!VC.on||!VC.rec)return;
-    if(Date.now()-(VC.lastEvent||0)<9000)return;
-    VC.revivals=(VC.revivals||0)+1;
-    try{VC.rec.abort()}catch(e){}
-    VC.starting=false; vcTouch();
-    vcTryStart();
-  },3000);
-}
-function vcUnwatch(){ if(VC.watchT){clearInterval(VC.watchT);VC.watchT=null} }
 
 /* ---- นับถอยหลังแล้วลงมือเอง โดยยกเลิกได้ทุกเมื่อ ----
    ใช้ร่วมกันทุกหน้าที่กล้องบอกได้ว่าผู้ใช้อยู่ในท่าพร้อมแล้ว
    ต้องยกเลิกได้จริง เพราะผู้ใช้เคยสะท้อนว่าระบบเริ่มทั้งที่ยังไม่พร้อม
-   ยกเลิกได้สามทาง: พูดว่า รอก่อน หรือ หยุด · กดปุ่มบนจอ · แตะที่ไหนก็ได้ */
+   ยกเลิกได้สามทาง: ยกมืออีกครั้ง · กดปุ่มบนจอ · แตะที่ไหนก็ได้ */
 var CD={t:null,n:0,fire:null,screen:null,tap:null};
 function cdRunning(){return !!CD.t}
 function cdCancel(quiet){
@@ -1994,14 +1613,14 @@ function cdCancel(quiet){
   clearInterval(CD.t); CD.t=null; CD.fire=null;
   if(CD.tap){document.removeEventListener("pointerdown",CD.tap,true);CD.tap=null}
   try{if("speechSynthesis" in window)speechSynthesis.cancel()}catch(e){}
-  if(!quiet){SPK.until=0;speak("รอก่อนก็ได้ เมื่อพร้อมค่อยบอก",{force:true})}
+  if(!quiet){SPK.until=0;speak("รอก่อนก็ได้ เมื่อพร้อมค่อยยกมือ",{force:true})}
   return true;
 }
 function cdStart(opts){
   cdCancel(true);
   CD.screen=opts.screen||S.screen; CD.fire=opts.onFire; CD.n=3;
   var nm={3:"สาม",2:"สอง",1:"หนึ่ง"}, head=opts.text||"พร้อมแล้ว";
-  setStatus("green",head+" — เตรียมตัว 3 (แตะจอหรือพูดว่า รอก่อน เพื่อหยุด)",false);
+  setStatus("green",head+" — เตรียมตัว 3 (แตะจอ หรือยกมืออีกครั้ง เพื่อหยุด)",false);
   speak(head+" เตรียมตัว สาม");
   CD.tap=function(){cdCancel()};
   document.addEventListener("pointerdown",CD.tap,true);
@@ -2025,7 +1644,7 @@ function cdStart(opts){
    ปุ่มรีโมต — รีโมตนำเสนอสไลด์ราคาไม่กี่ร้อยบาทส่งปุ่มลูกศร/PageUp/PageDown
               ซึ่งเบราว์เซอร์รับได้ตามปกติ ถือไว้ในมือแล้วกดได้เลย
 
-   ทั้งสองทางทำสิ่งเดียวกับที่พูดคำหลักของขั้นตอนนั้น และเคารพด่านเดียวกัน
+   ทั้งสองทางเรียกคำสั่งหลักของขั้นตอนนั้น และเคารพด่านเดียวกัน
    คือถ้ากำลังนับถอยหลังอยู่ ให้ยกเลิกการนับ ไม่ใช่สั่งซ้อน
    ============================================================ */
 var WRIST={L:15,R:16};
@@ -2063,13 +1682,11 @@ function stepSecondary(){
   for(var i=0;i<order.length;i++)if(STEP.on[order[i]])return order[i];
   return null;
 }
-/* ชื่อท่าทางที่ใช้ได้ตอนนี้ ไว้แสดงบนจอให้ผู้ใช้รู้ว่าทำอะไรได้บ้าง */
-var VC_NM={record:"บันทึก",start:"เริ่ม",pass:"ผ่าน",next:"ต่อไป",
-           fail:"ไม่ผ่าน",redo:"ทำใหม่",stop:"หยุด"};
+/* ชื่อท่าทางที่ใช้ได้ตอนนี้อยู่ใน RC_NM ไว้แสดงบนจอให้ผู้ใช้รู้ว่าทำอะไรได้บ้าง */
 function gestureHint(){
   var a=stepPrimary(), b=stepSecondary(), out=[];
-  if(a)out.push("ยกมือ = "+(VC_NM[a]||a));
-  if(b)out.push("ยกสองมือ = "+(VC_NM[b]||b));
+  if(a)out.push("ยกมือ = "+(RC_NM[a]||a));
+  if(b)out.push("ยกสองมือ = "+(RC_NM[b]||b));
   return out.join(" · ");
 }
 
@@ -2082,6 +1699,7 @@ function remoteFire(how,k){
   if(now-(HAND.fired||0)<1500)return null;   /* กันสั่งรัวจากเฟรมติด ๆ กัน */
   HAND.fired=now;
   STEP.t0=now; STEP.nudges=0;
+  if(typeof rcAck==="function")rcAck(k);      /* ทวนกลับก่อน แล้วลงมือทันที */
   try{STEP.on[k]()}catch(e){}
   return how+":"+k;
 }
@@ -2150,8 +1768,8 @@ function remoteLearn(){
       done=true; document.removeEventListener("keydown",onKey,true);
       if(!got){toast("ยังไม่ได้รับปุ่มจากรีโมต");return}
       try{localStorage.setItem("cs:rkey",got)}catch(e){}
-      toast("จำปุ่มรีโมตแล้ว — ใช้กดแทนการพูดได้เลย");
-      audit("ตั้งค่าปุ่มรีโมต","ผู้ใช้สอนปุ่ม "+(got===" "?"Space":got)+" ให้ใช้แทนคำสั่งเสียง");
+      toast("จำปุ่มรีโมตแล้ว — ใช้กดแทนการยกมือได้เลย");
+      audit("ตั้งค่าปุ่มรีโมต","ผู้ใช้สอนปุ่ม "+(got===" "?"Space":got)+" ให้ใช้แทนการยกมือ");
       render();
     },
     onCancel:function(){done=true;document.removeEventListener("keydown",onKey,true)}
@@ -2699,78 +2317,17 @@ function csFHIRBundle(rec,profile,base,traj){
           timestamp:when, entry:entries};
 }
 
-function vcStart(handler){
-  VC.handler=handler;
-  if(!VC.supported)return false;
-  if(VC.on){vcMount();return true}
-  var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-  try{
-    VC.rec=new SR();
-    VC.rec.lang="th-TH"; VC.rec.continuous=true; VC.rec.interimResults=true;
-    /* ขอคำเดาหลายแบบ ภาษาไทยคำสั่งสั้น ๆ มักไปโผล่เป็นคำเดาอันที่สองหรือสาม */
-    try{VC.rec.maxAlternatives=5}catch(e0){}
-    VC.rec.onstart=function(){VC.starting=false;vcTouch();vcRender()};
-    VC.rec.onaudiostart=vcTouch;
-    VC.rec.onspeechstart=vcTouch;
-    VC.rec.onresult=function(ev){
-      vcTouch();
-      var interim="";
-      for(var i=ev.resultIndex;i<ev.results.length;i++){
-        var res=ev.results[i], txt=res[0]&&res[0].transcript||"";
-        if(!res.isFinal){interim+=txt;continue}
-        vcDispatch(vcPick(res));
-      }
-      if(interim){
-        VC.live=interim.trim().slice(0,24);vcRender();
-        /* ---- รับคำสั่งจากผลชั่วคราวด้วย ----
-           Chrome ส่งผลสุดท้ายช้ากว่าเสียงจริงราวหนึ่งถึงสองวินาที และถ้าตัวรู้จำ
-           เสียงถูกรีสตาร์ตในช่วงนั้น ผลสุดท้ายจะไม่มาเลย คำที่พูดไปแล้วหายเงียบ
-           ผู้ใช้จึงต้องพูดซ้ำหลายครั้ง — อาการที่แจ้งมาตรง ๆ
-           ทำได้เฉพาะตอนอยู่ในขั้นตอน เพราะเป็นคำปิดชุดเล็กและย้อนได้ด้วย ทำใหม่ */
-        if(STEP.id)vcDispatchEarly(interim);
-      }
-    };
-    /* Chrome หยุดฟังเองเมื่อเงียบนาน — ต่อชีวิตให้เสมอขณะยังอยู่หน้าทดสอบ */
-    /* ช่วงรอรีสตาร์ตคือช่วงที่ระบบหูหนวก ยิ่งสั้นยิ่งพลาดคำน้อย */
-    VC.rec.onend=function(){ VC.starting=false; vcTouch(); if(VC.on)vcRevive(150) };
-    VC.rec.onerror=function(e){
-      var err=e&&e.error; vcTouch();
-      /* สายวัดระดับเสียงแย่งไมค์กับตัวรู้จำบนบางเครื่อง — เลือกตัวรู้จำ ปิดสายวัดถาวร */
-      if(err==="not-allowed"||err==="service-not-allowed"){
-        VC.on=false; VC.supported=false; vcRender();
-        setStatus("yellow","ไมโครโฟนถูกปิดไว้ — ใช้ปุ่มบนหน้าจอแทนได้ทุกคำสั่ง",false);
-        return;
-      }
-      VC.starting=false;
-      if(VC.on)vcRevive(err==="network"?1500:600);    /* no-speech / aborted / network */
-    };
-    VC.on=true; VC.lastHeard=""; VC.live=""; vcTouch(); vcWatch();
-    vcTryStart();
-    vcMount();
-    return true;
-  }catch(e){VC.on=false;return false}
+/* เปิดป้ายท่าทางในหน้าที่มีกล้อง — ไม่มีไมโครโฟนเกี่ยวข้อง */
+function rcStart(){
+  RC.on=true; RC.last=""; rcMount();
+  return true;
 }
-function vcTryStart(){
-  if(!VC.on||!VC.rec||VC.starting)return;
-  VC.starting=true;
-  try{VC.rec.start()}catch(e){VC.starting=false}   /* ซ้อนกัน = ยังฟังอยู่แล้ว ไม่ต้องทำอะไร */
-  vcRender();
+function rcStop(){
+  RC.on=false; RC.last="";
+  var b=document.getElementById("rcbadge"); if(b&&b.parentNode)b.parentNode.removeChild(b);
 }
-function vcRevive(ms){
-  if(VC.reviveT)clearTimeout(VC.reviveT);
-  VC.reviveT=setTimeout(function(){VC.reviveT=null;vcTryStart()},ms||500);
-}
-function vcStop(){
-  VC.on=false;VC.handler=null;VC.live="";VC.starting=false;
-  vcClearPending();
-  vcUnwatch();
-  if(VC.reviveT){clearTimeout(VC.reviveT);VC.reviveT=null}
-  if(VC.rec){try{VC.rec.onend=null;VC.rec.stop()}catch(e){}VC.rec=null}
-  var b=document.getElementById("vcbadge"); if(b&&b.parentNode)b.parentNode.removeChild(b);
-}
-function vcHint(){return VC.supported?'พูดว่า "เริ่ม" หรือกดปุ่ม':"กดปุ่มเริ่มเมื่อพร้อม"}
 
-var SPK={last:{},until:0};
+var SPK={last:{},until:0,hold:0};
 function speak(text,opts){
   opts=opts||{};
   var fin=function(){ if(opts.onDone){var f=opts.onDone;opts.onDone=null;try{f()}catch(e){}} };
@@ -2779,21 +2336,19 @@ function speak(text,opts){
     if(!("speechSynthesis" in window)){setTimeout(fin,120);return}
     /* กันพูดซ้ำ: ประโยคเดิมภายใน 4 วินาทีไม่พูดซ้ำ — แก้อาการ "พูดซ้ำไปซ้ำมา"
        เมื่อหลายจุดในโปรแกรมเรียกพูดข้อความเดียวกันติด ๆ กัน */
-    var key=vcNorm(text), now=Date.now();
+    var key=normText(text), now=Date.now();
     if(!opts.force&&SPK.last[key]&&now-SPK.last[key]<4000){setTimeout(fin,120);return}
     SPK.last[key]=now;
     /* หน้าต่างเวลาที่ระบบกำลังพูด — ประเมินจากความยาวข้อความก่อน
        แล้วร่นให้สั้นลงเมื่อรู้เวลาพูดจบจริง ใช้เป็นด่านกันฟังเสียงตัวเอง */
     SPK.until=now+800+text.length*75;
-    if(opts.interrupt!==false)speechSynthesis.cancel();
+    /* ในหน้าต่างทวนกลับ (SPK.hold) ให้ต่อคิว ไม่ตัดคำว่า รับทราบ ทิ้ง */
+    if(opts.interrupt!==false&&now>=SPK.hold)speechSynthesis.cancel();
     var u=new SpeechSynthesisUtterance(text);
     u.lang="th-TH"; u.rate=opts.rate||0.95; u.volume=1;
     var v=speechSynthesis.getVoices().filter(function(x){return /th/i.test(x.lang)});
     if(v.length)u.voice=v[0];
-    /* จำไว้ว่าระบบพูดอะไร ไม่ให้ไมค์รับเสียงตัวเองเป็นคำสั่ง — จบแล้วเหลืออายุ 2.2 วิ */
-    VC.lastSpoken=text;
-    var e=vcRemember(text);
-    var done=function(){ if(e)e.until=Date.now()+2200; SPK.until=Date.now()+600; fin() };
+    var done=function(){ SPK.until=Date.now()+600; fin() };
     u.onend=done; u.onerror=done;
     /* บางเครื่องเหตุการณ์พูดจบไม่มา — ตั้งเผื่อไว้ตามความยาวข้อความ ไม่ให้อะไรค้าง */
     setTimeout(done, 800+text.length*75);
@@ -2965,22 +2520,15 @@ function clearFaceSig(){
 }
 
 /* ============================================================
-   ยืนยันด้วยเสียงสำหรับปุ่มบนหน้าจอ
+   เสียงพูดชวนบนหน้ายืนยัน — พูดอย่างเดียว ไม่ฟัง
    ------------------------------------------------------------
-   ใช้กลไกทวนคำสั่งเดียวกับตอนทดสอบท่าทาง แต่หน้าเหล่านี้ไม่มีคำสั่งอื่น
-   จึงรับเฉพาะ ยืนยัน / ทำใหม่ / ยกเลิก
-   ปุ่มบนจอยังกดได้เสมอ — เสียงเป็นทางเลือก ไม่ใช่ทางเดียว
+   หน้ายืนยันท้ายหัวข้ออยู่ใกล้มือ ผู้ใช้กดปุ่มได้เอง จึงไม่ต้องสั่งระยะไกล
+   เหลือไว้แค่การพูดทวนว่าบันทึกอะไรไปแล้ว เพื่อให้คนที่อ่านจอไม่ถนัดยังรู้ผล
+   พูดหลังหน้าจอวาดเสร็จ ไม่ให้ทับเสียงก่อนหน้า
    ============================================================ */
-function voiceConfirm(opts){
-  if(!VOICE.on||!VC.supported) return false;
-  vcStart(function(cmd){
-    if(cmd==="confirm"){
-      if(opts.enabled&&!opts.enabled()){ speak("ยังยืนยันไม่ได้ กรุณาทำตามที่หน้าจอบอกก่อน"); return }
-      vcStop(); if(opts.onConfirm)opts.onConfirm();
-    }else if(cmd==="again"&&opts.onRedo){ vcStop(); opts.onRedo() }
-    else if(cmd==="stop"&&opts.onCancel){ vcStop(); opts.onCancel() }
-  });
-  setTimeout(function(){ if(opts.prompt)speak(opts.prompt) },500);
+function spokenPrompt(text){
+  if(!VOICE.on||!text)return false;
+  setTimeout(function(){speak(text)},500);
   return true;
 }
 
@@ -3115,21 +2663,15 @@ function sectionDone(key,opts){
       (left.length?"ยืนยัน · กลับหน้ารวมหัวข้อ":"ยืนยัน · ไปหน้าสรุป")+'</button>'+
     '<button class="ghostb" id="scRedo">ทำหัวข้อนี้ใหม่</button>'+
     '</div>';
-  var goNext=function(){ vcStop(); if(opts.next)opts.next(); else go("assessHub") };
-  var goHub =function(){ vcStop(); go("assessHub") };
-  var goRedo=function(){ vcStop(); if(sec)sec.go() };
+  var goNext=function(){ if(opts.next)opts.next(); else go("assessHub") };
+  var goHub =function(){ go("assessHub") };
+  var goRedo=function(){ if(sec)sec.go() };
   if(opts.next) document.getElementById("scNext").addEventListener("click",goNext);
   document.getElementById("scHub").addEventListener("click",goHub);
   document.getElementById("scRedo").addEventListener("click",goRedo);
-  var vOn=voiceConfirm({
-    prompt:"บันทึก"+(sec?sec.t:"")+"แล้ว "+(opts.value||(sec?sec.sum(S.draft):""))+
-           " ถ้าถูกต้อง พูดว่า ยืนยัน หรือพูดว่า ทำใหม่ เพื่อทำหัวข้อนี้อีกครั้ง",
-    onConfirm:goNext, onRedo:goRedo});
-  if(vOn){
-    var h=document.createElement("div"); h.className="vcline";
-    h.innerHTML='🎤 พูดว่า <b style="margin:0 4px">ยืนยัน</b> เพื่อไปต่อ หรือ <b style="margin:0 4px">ทำใหม่</b> เพื่อทำซ้ำ';
-    V.querySelector(".okcard").insertAdjacentElement("afterend",h);
-  }
+  /* ทวนด้วยเสียงว่าบันทึกอะไรไป — ปุ่มบนจอเป็นทางเดียวที่ไปต่อ */
+  spokenPrompt("บันทึก"+(sec?sec.t:"")+"แล้ว "+(opts.value||(sec?sec.sum(S.draft):""))+
+               " ถ้าถูกต้อง กดปุ่มยืนยัน หรือกดทำหัวข้อนี้ใหม่");
 }
 
 /* เข้าหน้ารวมหัวข้อแทนการไล่เป็นเส้นตรง และถามก่อนถ้ามีร่างค้าง */
@@ -3167,7 +2709,6 @@ function faceV(){
   statusHTML()+
   '<label class="chk" id="fcChkWrap" style="margin-bottom:12px"><input type="checkbox" id="fcConsent"'+(already?" checked":"")+'><span>ข้าพเจ้ายินยอมให้เก็บลายเซ็นเชิงสัดส่วนใบหน้าไว้ในเครื่องนี้ เพื่อยืนยันว่าเป็นข้าพเจ้าเองที่ทำการทดสอบ</span></label>'+
   '<button class="cta" id="fcSave" disabled>บันทึกใบหน้าและไปต่อ</button>'+
-  '<div class="vcline" id="fcVoiceHint" hidden>🎤 หรือพูดว่า <b style="margin:0 4px">ยืนยัน</b> เมื่อพร้อมบันทึก</div>'+
   '<button class="ghostb" id="fcSkip">ข้าม · ทำต่อโดยไม่ยืนยันตัวตน</button>'+
   (already?'<button class="ghostb danger" id="fcDel">ลบใบหน้าที่บันทึกไว้</button>':'')+
   '<div class="disc">ขอบเขตที่ระบบทำได้จริง: ตรวจว่าเป็น<b>คนเดิมตลอดการทดสอบ</b>เท่านั้น ไม่ใช่การพิสูจน์ตัวตนแบบธนาคาร</div></div>';
@@ -3187,7 +2728,7 @@ function faceV(){
 async function startFacePipeline(){
   /* ครึ่งจอ ไม่ใช่เต็มจอ — ต้องย้ายช่องติ๊กยินยอมลงแผงด้วย ไม่ใช่แค่ปุ่ม
      มิฉะนั้นช่องติ๊กจะอยู่หลังกล้อง กดไม่ได้ และปุ่มบันทึกค้าง disabled */
-  camHalf(["fcChkWrap","fcSave","fcVoiceHint","fcSkip","fcDel"]);
+  camHalf(["fcChkWrap","fcSave","fcSkip","fcDel"]);
   var video=document.getElementById("vid"),canvas=document.getElementById("cv"),ctx=canvas.getContext("2d");
   var tag=document.getElementById("tag"),coach=document.getElementById("coach"),
       save=document.getElementById("fcSave"),chk=document.getElementById("fcConsent");
@@ -3234,14 +2775,9 @@ async function startFacePipeline(){
     onFire:function(){doSaveFace()}});
   loop();
   chk.addEventListener("change",function(){save.disabled=!(this.checked&&cur);if(!this.checked)AUTO.abort()});
-  save.addEventListener("click",function(){AUTO.abort();vcStop();doSaveFace()});
-  /* ยืนยันด้วยเสียง — เงื่อนไขเดียวกับปุ่มเป๊ะ ถ้ายังไม่ครบ บอกเหตุผล ไม่ปล่อยผ่าน */
-  var vhint=document.getElementById("fcVoiceHint");
-  if(voiceConfirm({
-      prompt:"เมื่อพร้อมบันทึกใบหน้า ให้ติ๊กช่องยินยอม แล้วพูดว่า ยืนยัน",
-      enabled:function(){ return !!(cur&&chk.checked) },
-      onConfirm:function(){ AUTO.abort(); doSaveFace() }
-    }) && vhint) vhint.hidden=false;
+  save.addEventListener("click",function(){AUTO.abort();rcStop();doSaveFace()});
+  /* ไม่มีการยืนยันด้วยเสียงหรือท่าทางในหน้านี้ — การบันทึกใบหน้าต้องกดปุ่มเองเท่านั้น */
+  spokenPrompt("เมื่อพร้อมบันทึกใบหน้า ให้ติ๊กช่องยินยอม แล้วกดปุ่มบันทึก");
   async function doSaveFace(){
     if(!cur||!chk.checked)return;
     saveFaceSig(cur);
@@ -3337,13 +2873,13 @@ function showFallback(reason){
   });
 }
 function stopCam(){
-  vcStop();                     /* ปิดไมค์ทุกครั้งที่ปิดกล้อง */
+  rcStop();                     /* ปิดป้ายท่าทางทุกครั้งที่ปิดกล้อง */
   if(RAF)cancelAnimationFrame(RAF);RAF=null;
   if(S.cam){S.cam.getTracks().forEach(function(t){t.stop()});S.cam=null}
 }
 function calibV(){
   if(PILOT&&!S.pilotT0)S.pilotT0=Date.now();  /* เริ่มจับเวลา "เปิดระบบจนจบ 1 รอบ" */
-  head("สอบเทียบ","ให้กล้องรู้จักท่านั่งและท่ายืนของคุณ","ระบบไม่บันทึกเอง — ท่านนั่งลงแล้วพูดว่า \"บันทึกท่านั่ง\" ยืนขึ้นแล้วพูดว่า \"บันทึกท่ายืน\" (หรือกดปุ่ม)","assess");
+  head("สอบเทียบ","ให้กล้องรู้จักท่านั่งและท่ายืนของคุณ","ระบบไม่บันทึกเอง — ท่านนั่งลงแล้วยกมือค้างไว้ หรือกดปุ่มบันทึกท่านั่ง จากนั้นยืนขึ้นแล้วทำแบบเดียวกัน","assess");
   V.innerHTML='<div class="anim">'+
   '<div class="stage"><video id="vid" playsinline muted autoplay></video><canvas id="cv"></canvas>'+
   '<div class="hud"><div class="hudtop"><span class="hudtag" id="tag">กำลังเปิดกล้อง…</span></div>'+
@@ -3427,7 +2963,7 @@ function drawPose(ctx,canvas,video,lm){
    ค่าที่ได้ก็สลับกัน แล้วการนับลุกนั่งทั้งชุดก็เพี้ยนตามไปหมด
 
    รุ่นนี้กลับด้าน: กล้อง "รายงาน" สิ่งที่เห็นอย่างเดียว ไม่บันทึกเอง
-   ผู้ใช้นั่งลงแล้วพูดว่า "บันทึกท่านั่ง" · ยืนขึ้นแล้วพูดว่า "บันทึกท่ายืน"
+   ผู้ใช้นั่งลงแล้วยกมือค้างไว้ (หรือกดปุ่ม) เพื่อบันทึกท่านั่ง · ยืนขึ้นแล้วทำแบบเดียวกัน
    ระบบขานรับทุกครั้งว่าบันทึกอะไรไปแล้ว จะทำสลับลำดับก็ได้
    ============================================================ */
 function setupCalib(video,canvas,ctx){
@@ -3474,7 +3010,7 @@ function setupCalib(video,canvas,ctx){
         CALH.push(m); if(CALH.length>14)CALH.shift();
         var s=seenText();
         coach.innerHTML="<b>"+esc(fmtState())+"</b><br>"+
-          (s?esc(s)+" — ":"")+'พูดว่า "บันทึกท่านั่ง" หรือ "บันทึกท่ายืน" (หรือกดปุ่ม)';
+          (s?esc(s)+" — ":"")+'ยกมือค้างไว้ 1 วินาที หรือกดปุ่ม เพื่อบันทึกท่าที่กำลังทำอยู่';
         setStatus("green","เห็นตัวชัดแล้ว — ท่านเป็นผู้สั่งว่าจะบันทึกท่าไหน",false);
       }
     }else{cur=null;coach.textContent="ยังไม่พบคนในภาพ";
@@ -3523,14 +3059,14 @@ function setupCalib(video,canvas,ctx){
     toast("สอบเทียบเรียบร้อย");
     setStatus("green","สอบเทียบเรียบร้อย — ขั้นต่อไป ทดสอบลุกนั่ง 5 ครั้ง",false);
     speak("สอบเทียบเรียบร้อยแล้ว ขั้นตอนต่อไป ทดสอบลุกนั่ง ห้าครั้ง กรุณานั่งลงบนเก้าอี้");
-    vcStop();
+    rcStop();
     setTimeout(function(){go("test")},2600);
   }
   cap.addEventListener("click",function(){capture("sit")});
   if(capStand)capStand.addEventListener("click",function(){capture("stand")});
   /* ทีละขั้น: บอกให้ทำท่าไหน แล้วรอคำว่า "บันทึก" คำเดียว ทำทันที
      เดิมต้องพูด "บันทึกท่านั่ง" แล้วตอบ "ยืนยัน" อีกครั้ง ซึ่งยาวและพลาดง่าย */
-  function calBail(){cdCancel(true);CALKIND=null;stepStop();vcStop();stopCam();go("assess")}
+  function calBail(){cdCancel(true);CALKIND=null;stepStop();rcStop();stopCam();go("assess")}
   function calReset(){
     cdCancel(true); CALKIND=null; CALH.length=0;
     sitVal=null;standVal=null;cstep.textContent=fmtState();
@@ -3538,23 +3074,21 @@ function setupCalib(video,canvas,ctx){
     askSit();
   }
   function askSit(){
-    stepBegin({id:"calSit",say:"บันทึก",
-      cue:"ท่านั่ง นั่งลงแล้วพูดว่า บันทึก",
-      hint:"พูดว่า บันทึก",
-      on:{record:function(){cdCancel(true);capture("sit")},redo:calReset,stop:calBail,
-          wait:function(){cdCancel()}}});
+    stepBegin({id:"calSit",
+      cue:"ท่านั่ง นั่งลงแล้วยกมือค้างไว้ หรือกดปุ่มบันทึก",
+      hint:"ยกมือค้างไว้ หรือกดปุ่มบันทึก",
+      on:{record:function(){cdCancel(true);capture("sit")},redo:calReset,stop:calBail}});
     CALKIND="sit"; CALH.length=0;
   }
   function askStand(){
-    stepBegin({id:"calStand",say:"บันทึก",
-      cue:"ท่ายืน ยืนขึ้นแล้วพูดว่า บันทึก",
-      hint:"พูดว่า บันทึก",
-      on:{record:function(){cdCancel(true);capture("stand")},redo:calReset,stop:calBail,
-          wait:function(){cdCancel()}}});
+    stepBegin({id:"calStand",
+      cue:"ท่ายืน ยืนขึ้นแล้วยกมือค้างไว้ หรือกดปุ่มบันทึก",
+      hint:"ยกมือค้างไว้ หรือกดปุ่มบันทึก",
+      on:{record:function(){cdCancel(true);capture("stand")},redo:calReset,stop:calBail}});
     CALKIND="stand"; CALH.length=0;
   }
   CAL_ASK_SIT=askSit; CAL_ASK_STAND=askStand;
-  vcStart(function(){});
+  rcStart();
   cstep.textContent=fmtState();
   askSit();
 }
@@ -3609,7 +3143,7 @@ function setupTest(video,canvas,ctx){
         st.textContent=sitting?"นั่ง":"ยืน";
         if(AUTOSTART&&!AUTOSTART.counting)
           setStatus(sitting?"green":"yellow",
-            sitting?"เห็นท่านั่งแล้ว — เมื่อพร้อม พูดว่า \"เริ่มทดสอบ\"":"กรุณานั่งลงบนเก้าอี้ก่อน",false);
+            sitting?"เห็นท่านั่งแล้ว — เมื่อพร้อม ยกมือค้างไว้ หรือกดปุ่มเริ่ม":"กรุณานั่งลงบนเก้าอี้ก่อน",false);
         if(AUTOSTART)AUTOSTART.update(sitting&&q>=0.8);
       }
       if(q<0.8)coach.textContent="เห็นตัวไม่ครบ — ขยับมือถือให้เห็นทั้งตัว";
@@ -3628,21 +3162,19 @@ function setupTest(video,canvas,ctx){
   loop();
   /* เริ่มจับเวลาเองอัตโนมัติเมื่อผู้ใช้นั่งนิ่งพร้อม — ไม่ต้องเดินมากดปุ่ม */
   /* เดิม: เริ่มจับเวลาเองเมื่อนั่งนิ่ง → ผู้ใช้สะท้อนว่า "เริ่มทั้งที่ยังไม่พร้อม"
-     ใหม่: ระบบประกาศว่าพร้อม แล้วรอคำสั่งเสียงหรือปุ่มจากผู้ใช้เสมอ */
-  /* เดิมประกาศแล้วรอคำสั่งเสียงอย่างเดียว พอเสียงพลาดก็ค้างตรงนี้ตลอด
-     ตอนนี้กล้องเห็นว่านั่งนิ่งแล้วก็นับถอยหลังเริ่มเอง ยกเลิกได้ทุกทาง */
+     ตอนนี้กล้องเห็นว่านั่งนิ่งแล้วก็นับถอยหลังเริ่มเอง ยกเลิกได้ทุกทาง
+     และผู้ใช้สั่งเริ่มเองได้ก่อนด้วยการยกมือค้างไว้หรือกดปุ่ม */
   AUTOSTART=new AutoCapture({screen:"test",holdMs:2500,readyText:"นั่งพร้อมแล้ว",announce:true,
     abortOnLost:false,onFire:function(){
       cdStart({screen:S.screen,text:"เห็นว่านั่งพร้อมแล้ว",onFire:function(){beginTimer()}});
     }});
-  vcStart(function(){});
-  /* คำว่า "บันทึก" กับ "เริ่ม" ทำอย่างเดียวกัน เพราะผู้ใช้พูดได้ทั้งสองแบบ */
-  stepBegin({id:"ftsst",say:"เริ่ม",
-    cue:"ลุกนั่ง ห้าครั้ง นั่งลงแล้วพูดว่า เริ่ม",
-    hint:"พูดว่า เริ่ม",
+  rcStart();
+  /* "บันทึก" กับ "เริ่ม" ทำอย่างเดียวกัน — ยกมือข้างเดียวหรือปุ่มรีโมตจึงเริ่มจับเวลาได้ทั้งคู่ */
+  stepBegin({id:"ftsst",
+    cue:"ลุกนั่ง ห้าครั้ง นั่งลงแล้วยกมือค้างไว้ หรือกดปุ่มเริ่ม",
+    hint:"ยกมือค้างไว้ หรือกดปุ่มเริ่ม",
     on:{start:function(){cdCancel(true);beginTimer()},record:function(){cdCancel(true);beginTimer()},
-        wait:function(){cdCancel();if(AUTOSTART){AUTOSTART.abort();AUTOSTART.readySince=null}},
-        stop:function(){cdCancel(true);stepStop();if(running)stopBtn.click();else{vcStop();stopCam();go("assess")}}}});
+        stop:function(){cdCancel(true);stepStop();if(running)stopBtn.click();else{rcStop();stopCam();go("assess")}}}});
   function beginTimer(){
     if(running)return;
     AUTOSTART.abort();AUTOSTART.done=true;
@@ -3650,8 +3182,8 @@ function setupTest(video,canvas,ctx){
     startBtn.textContent="กำลังจับเวลา…";startBtn.disabled=true;
     stopBtn.hidden=false;
     setStatus("green","เริ่มได้เลย — นาฬิกาจะเริ่มเดินเมื่อคุณเริ่มลุก",false);speak("เริ่มได้เลย");
-    /* ระหว่างจับเวลารับแค่ "หยุด" — คำอื่นไม่ควรไปแตะอะไรกลางการวัด */
-    stepBegin({id:"ftsstRun",say:"หยุด",cue:"",quiet:true,hint:"พูดว่า หยุด เพื่อเลิก",
+    /* ระหว่างจับเวลารับแค่ หยุด (ยกสองมือ) — ท่าทางอื่นไม่ควรไปแตะอะไรกลางการวัด */
+    stepBegin({id:"ftsstRun",cue:"",quiet:true,hint:"ยกสองมือค้างไว้ หรือกดปุ่มหยุด เพื่อเลิก",
       on:{stop:function(){stepStop();stopBtn.click()}}});
     coach.innerHTML="ลุกยืนให้สุดแล้วนั่งลงให้สุด ทำต่อเนื่อง<span class='statebadge'>เริ่มแล้ว</span>";
   }
@@ -4138,7 +3670,7 @@ BalanceEngine.prototype.finalSway=function(){return this._sd(this.samples)};
    ============================================================ */
 function TugTracker(refs){
   this.sitRef=refs.sitRef; this.standRef=refs.standRef;
-  /* CDC ให้เริ่มจับเวลาเมื่อผู้ประเมินพูดว่า "เริ่ม" ไม่ใช่ตอนที่ผู้รับการ
+  /* CDC ให้เริ่มจับเวลาที่สัญญาณ "เริ่ม" ของผู้ประเมิน ไม่ใช่ตอนที่ผู้รับการ
      ประเมินขยับ ระบบจึงบันทึกเวลาสัญญาณเริ่มไว้ที่ goAt แล้วเก็บเวลา
      ที่เริ่มขยับจริงไว้ต่างหาก เพื่อรายงานเวลาตอบสนองแยกได้ */
   this.goAt=null;
@@ -4242,8 +3774,8 @@ function tugV(){
   '<div class="rowline"><span class="k">① วางป้ายจุดเริ่ม</span><span class="v">ที่เก้าอี้</span></div>'+
   '<div class="rowline"><span class="k">② วางป้ายจุดกลับ</span><span class="v">ห่าง 3 เมตร</span></div>'+
   '<div class="rowline"><span class="k">③ กลับมานั่งเก้าอี้</span><span class="v">พิงพนัก</span></div>'+
-  '<p class="sub" style="margin:10px 0 0">เมื่อวางป้ายเสร็จ กลับมานั่งที่เก้าอี้ ระบบจะบอกเมื่อเห็นว่าท่านพร้อม แล้ว<b>รอคำสั่งของท่าน</b> — พูดว่า “เริ่มทดสอบ” (หรือกดปุ่ม) ระบบจึงจะนับ 3-2-1</p></div>'+
-  '<div class="card" style="background:var(--surf2)"><h3>เมื่อได้ยินคำว่า “เริ่ม”</h3>'+
+  '<p class="sub" style="margin:10px 0 0">เมื่อวางป้ายเสร็จ กลับมานั่งที่เก้าอี้ ระบบจะบอกเมื่อเห็นว่าท่านพร้อม แล้ว<b>รอคำสั่งของท่าน</b> — ยกมือค้างไว้ 1 วินาที หรือกดปุ่มเริ่ม ระบบจึงจะนับ 3-2-1</p></div>'+
+  '<div class="card" style="background:var(--surf2)"><h3>เมื่อระบบพูดว่า “เริ่ม”</h3>'+
   '<p class="sub" style="margin:0">ลุกขึ้น → เดินด้วย<b>ความเร็วปกติ</b>ไปที่ป้ายจุดกลับ → หมุนกลับ → เดินกลับมา → นั่งลงพิงพนัก · ระบบจะพูดว่า “เสร็จสิ้น” เองเมื่อท่านนั่งลงเรียบร้อย</p>'+
   '<p class="sub" style="margin:8px 0 0">ใช้ไม้เท้าหรือเครื่องช่วยเดินที่ใช้ประจำได้ · สวมรองเท้าที่ใส่ประจำ · วางมือถือพิงผนังให้เห็นทั้งเก้าอี้และทางเดิน</p>'+
   '<p class="sub" style="margin:8px 0 0">เกณฑ์คัดกรอง CDC STEADI: ใช้เวลาตั้งแต่ <b>12 วินาที</b> ขึ้นไป สัมพันธ์กับความเสี่ยงหกล้มที่สูงขึ้น</p></div>'+
@@ -4252,7 +3784,7 @@ function tugV(){
   '<div class="hudbot"><div class="counter"><span class="n" id="tugclk">0.0</span><span class="of">วินาที</span></div>'+
   '<div class="coach" id="coach">วางป้ายให้เรียบร้อย แล้วกลับมานั่งที่เก้าอี้</div></div></div></div>'+
   statusHTML()+
-  '<button class="cta" id="tugStart">เริ่มทดสอบ (แทนคำสั่งเสียงได้)</button>'+
+  '<button class="cta" id="tugStart">เริ่มทดสอบ (หรือยกมือค้างไว้)</button>'+
   '<button class="ghostb" id="tugSkip">ข้ามขั้นนี้ · ไปทดสอบการทรงตัว</button>'+
   '<div class="disc">กล้องบันทึกเฉพาะ<b>ตัวเลขเวลา ระยะสัมพัทธ์ และการเบี่ยงแนวเดิน</b> ไม่เก็บภาพหรือวิดีโอ</div></div>';
   document.getElementById("tugSkip").addEventListener("click",function(){
@@ -4359,14 +3891,13 @@ async function startTugPipeline(){
   loop();
 
   startBtn.addEventListener("click",function(){ if(phase==="waitSit")countdown(); });
-  vcStart(function(){});
+  rcStart();
   TUG_ASK=function(){
-    stepBegin({id:"tug",say:"เริ่ม",
-      cue:"ลุกเดินสามเมตร นั่งพิงพนักแล้วพูดว่า เริ่ม",
-      hint:"พูดว่า เริ่ม",
+    stepBegin({id:"tug",
+      cue:"ลุกเดินสามเมตร นั่งพิงพนักแล้วยกมือค้างไว้ หรือกดปุ่มเริ่ม",
+      hint:"ยกมือค้างไว้ หรือกดปุ่มเริ่ม",
       on:{start:function(){cdCancel(true);if(phase==="waitSit")countdown()},
           record:function(){cdCancel(true);if(phase==="waitSit")countdown()},
-          wait:function(){cdCancel();armed=false;seatedN=0},
           stop:function(){stepStop();var b=document.getElementById("tugSkip");if(b)b.click()}}});
   };
 
@@ -4404,7 +3935,7 @@ function finishVisionTug(ev){
 
 function balanceV(){
   head("ทดสอบการทรงตัว","4-Stage Balance Test",
-       "4 ท่า ท่าละ 10 วินาที · ยืนหันข้างให้กล้อง · ระบบตรวจตำแหน่งเท้าและบอกเมื่อพร้อม แล้วรอท่านพูดว่า \"เริ่มทดสอบ\"","assess");
+       "4 ท่า ท่าละ 10 วินาที · ยืนหันข้างให้กล้อง · ระบบตรวจตำแหน่งเท้าและบอกเมื่อพร้อม แล้วรอให้ท่านยกมือค้างไว้ หรือกดปุ่มเริ่ม","assess");
   V.innerHTML='<div class="anim">'+
   '<div class="stage"><video id="vid" playsinline muted autoplay></video><canvas id="cv"></canvas>'+
   '<div class="hud"><div class="hudtop"><span class="hudtag" id="tag">กำลังเปิดกล้อง…</span></div>'+
@@ -4426,7 +3957,7 @@ function balanceV(){
     '<button class="ghostb" id="bcFail" style="margin:0 0 8px">✗ ไม่ผ่าน — ขยับเท้าหรือต้องจับพยุง</button>'+
     '<button class="ghostb" id="bcHalt" style="margin:0;border-color:#DC2626;color:#DC2626">■ หยุดเพื่อความปลอดภัย</button>'+
   '</div>'+
-  '<button class="cta" id="bStart">เริ่มท่านี้ (หรือพูดว่า "เริ่ม")</button>'+
+  '<button class="cta" id="bStart">เริ่มท่านี้ (หรือยกมือค้างไว้)</button>'+
   '<button class="ghostb" id="bRetry" hidden>ทำท่านี้ใหม่อีกครั้ง</button>'+
   '<div style="display:flex;gap:8px;margin:8px 0">'+
     '<button class="ghostb" id="bAgain" style="flex:1;margin:0">ทำใหม่</button>'+
@@ -4485,7 +4016,7 @@ async function startBalancePipeline(){
     coach.innerHTML='<b>ท่าที่ '+(stage+1)+' · '+esc(st.nm)+'</b><br>'+esc(st.how);
     setStatus("yellow","ท่าที่ "+(stage+1)+" จาก 4 — "+st.nm,false);
     speak((retry?"ลองท่านี้ใหม่อีกครั้ง ":"ต่อไป ")+"ท่าที่ "+(stage+1)+" จาก 4 ท่า "+st.nm+" "+st.how+
-          " เมื่อพร้อม กรุณาพูดว่า เริ่ม");
+          " เมื่อพร้อม ยกมือค้างไว้ หรือกดปุ่มเริ่ม");
     if(BAL_ASK)BAL_ASK("setup");
   }
 
@@ -4553,9 +4084,9 @@ async function startBalancePipeline(){
               :("หยุดที่ "+held.toFixed(0)+" วินาที ");
     var hint=o.suggest==="fail"?"กล้องเห็นการขยับเท้าหรือการทรุดตัว ":
              (o.suggest==="unsure"?"กล้องมองเห็นไม่ชัดพอ จึงไม่สรุปแทนท่าน ":"");
-    setStatus(o.suggest==="fail"?"yellow":"green", "รอการยืนยันผล — พูดว่า ผ่าน หรือ ไม่ผ่าน", false);
-    coach.innerHTML='<b>กรุณายืนยันผล</b> — พูดว่า "ผ่าน" หรือ "ไม่ผ่าน" หรือกดปุ่ม';
-    speak(q+hint+"กรุณาพูดว่า ผ่าน หรือ ไม่ผ่าน หรือกดปุ่มบนหน้าจอ");
+    setStatus(o.suggest==="fail"?"yellow":"green", "รอการยืนยันผล — ยกมือ = ผ่าน · ยกสองมือ = ไม่ผ่าน · หรือกดปุ่ม", false);
+    coach.innerHTML='<b>กรุณายืนยันผล</b> — ยกมือข้างเดียว = ผ่าน · ยกสองมือ = ไม่ผ่าน · หรือกดปุ่ม';
+    speak(q+hint+"ถ้าผ่าน ยกมือข้างเดียวค้างไว้ ถ้าไม่ผ่าน ยกสองมือ หรือกดปุ่มบนหน้าจอ");
     if(BAL_ASK)BAL_ASK("confirm");
 
     /* ถามซ้ำครั้งเดียวเมื่อเงียบไป 25 วินาที แล้วเปิดทางออกให้กดเอง
@@ -4565,7 +4096,7 @@ async function startBalancePipeline(){
       /* ต้องเช็คหน้าจอด้วย ไม่ใช่แค่ phase — ผู้ใช้อาจกด "หยุดการทดสอบ"
          ออกไปหน้าคำถามแล้ว ถ้าเช็คแต่ phase เสียงจะไปพูดผิดหน้า */
       if(S.screen!=="balance"||phase!=="confirm")return;
-      speak("ยังรอการยืนยันผลอยู่ กรุณาพูดว่า ผ่าน หรือ ไม่ผ่าน หรือกดปุ่มบนหน้าจอ");
+      speak("ยังรอการยืนยันผลอยู่ ยกมือข้างเดียวถ้าผ่าน ยกสองมือถ้าไม่ผ่าน หรือกดปุ่มบนหน้าจอ");
       coach.innerHTML='<b>ยังรอการยืนยัน</b> — หากไม่มีผู้ยืนยัน ให้กดปุ่มตามที่เกิดขึ้นจริง';
     },25000);
   }
@@ -4597,8 +4128,8 @@ async function startBalancePipeline(){
       return;
     }
     setStatus("yellow","ท่าที่ "+(stage+1)+" ไม่ผ่าน",false);
-    coach.innerHTML='<b>บันทึกว่าไม่ผ่าน</b> — พูดว่า "ทำใหม่" เพื่อลองอีกครั้ง หรือ "ทำต่อ" เพื่อสรุปผล';
-    speak("บันทึกว่าไม่ผ่านแล้ว ถ้าต้องการลองอีกครั้ง พูดว่า ทำใหม่ ถ้าจะสรุปผล พูดว่า ทำต่อ");
+    coach.innerHTML='<b>บันทึกว่าไม่ผ่าน</b> — ยกสองมือ = ทำใหม่ · ยกมือข้างเดียว = ทำต่อ · หรือกดปุ่ม';
+    speak("บันทึกว่าไม่ผ่านแล้ว ถ้าต้องการลองอีกครั้ง ยกสองมือค้างไว้ ถ้าจะสรุปผล ยกมือข้างเดียว หรือกดปุ่ม");
     if(attempts[stage]<2){
       retryBtn.hidden=false;
       var wait=setTimeout(function(){ if(phase==="between")doFinishFail() },20000);
@@ -4729,7 +4260,7 @@ async function startBalancePipeline(){
     if(phase==="between"&&pendingRetry)pendingRetry();
     else if(phase==="setup"||phase==="holding"){clearCd();announce(true)}
   });
-  document.getElementById("bHelp").addEventListener("click",function(){speak(STEP.hint||VC_HELP,{force:true})});
+  document.getElementById("bHelp").addEventListener("click",function(){speak((STEP.hint?STEP.hint+" ":"")+RC_HELP,{force:true})});
   /* แสดงการ์ดเฉพาะเครื่องที่มีเซ็นเซอร์จริง และยังไม่ได้เปิด */
   (function(){
     var card=document.getElementById("imuCard"), btn=document.getElementById("imuOn");
@@ -4751,34 +4282,33 @@ async function startBalancePipeline(){
       });
     });
   })();
-  /* คำสั่งเสียงครบชุด — ทุกคำมีปุ่มบนจอทดแทนได้เสมอ */
-  vcStart(function(){});
-  /* หน้าทรงตัวมีหลายจังหวะ แต่ละจังหวะรับคำต่างกัน จึงประกาศขั้นตอนใหม่ทุกครั้ง
-     ที่จังหวะเปลี่ยน แทนการฟังทุกคำตลอดเวลาแล้วมาไล่ if ทีหลัง */
+  /* ท่าทางครบชุด — ทุกคำสั่งมีปุ่มบนจอทดแทนได้เสมอ */
+  rcStart();
+  /* หน้าทรงตัวมีหลายจังหวะ แต่ละจังหวะรับคำสั่งต่างกัน จึงประกาศขั้นตอนใหม่ทุกครั้ง
+     ที่จังหวะเปลี่ยน ยกมือข้างเดียวและสองมือจึงหมายถึงสิ่งที่ถูกต้องของจังหวะนั้น */
   var BAL_ASK=null;
   BAL_ASK=function(kind){
     if(kind==="setup")
-      return stepBegin({id:"balSetup",say:"เริ่ม",
-        cue:"",hint:"พูดว่า เริ่ม",
+      return stepBegin({id:"balSetup",
+        cue:"",hint:"ยกมือค้างไว้ หรือกดปุ่มเริ่ม",
         on:{start:function(){cdCancel(true);if(phase==="setup")countdown()},
             record:function(){cdCancel(true);if(phase==="setup")countdown()},
-            wait:function(){cdCancel();armed=false},
             redo:function(){clearCd();announce(true)},
             stop:function(){stepStop();var b=document.getElementById("bStop");if(b)b.click()}}});
     if(kind==="confirm")
-      return stepBegin({id:"balConfirm",say:"ผ่าน",
-        cue:"",quiet:true,hint:"พูดว่า ผ่าน หรือ ไม่ผ่าน",
+      return stepBegin({id:"balConfirm",
+        cue:"",quiet:true,hint:"ยกมือข้างเดียว ถ้าผ่าน ยกสองมือ ถ้าไม่ผ่าน หรือกดปุ่ม",
         on:{pass:function(){stepStop();settle(true)},
             fail:function(){stepStop();settle(false)},
             stop:function(){stepStop();haltSafe()}}});
     if(kind==="between")
-      return stepBegin({id:"balBetween",say:"ต่อไป",
-        cue:"",hint:"พูดว่า ต่อไป หรือ ทำใหม่",
+      return stepBegin({id:"balBetween",
+        cue:"",hint:"ยกมือข้างเดียว เพื่อทำต่อ ยกสองมือ เพื่อทำใหม่ หรือกดปุ่ม",
         on:{next:function(){stepStop();if(pendingNext)pendingNext()},
             redo:function(){stepStop();if(pendingRetry)pendingRetry()},
             stop:function(){stepStop();var b=document.getElementById("bStop");if(b)b.click()}}});
     if(kind==="holding")
-      return stepBegin({id:"balHold",say:"หยุด",cue:"",quiet:true,hint:"พูดว่า หยุด",
+      return stepBegin({id:"balHold",cue:"",quiet:true,hint:"ยกสองมือค้างไว้ หรือกดปุ่มหยุด",
         on:{stop:function(){stepStop();haltSafe()},
             fail:function(){stepStop();haltSafe()}}});
     stepStop();
@@ -4790,9 +4320,9 @@ async function startBalancePipeline(){
   speak("การทดสอบการทรงตัวมีสี่ท่า ท่าละสิบวินาที ลืมตาตลอด ไม่ต้องจับสิ่งใด "+
         "ควรมีผู้ดูแลยืนอยู่ข้าง ๆ เพื่อความปลอดภัย "+
         "ยืนห่างจากกล้องประมาณสองถึงสามเมตร ให้เห็นทั้งตัว และยืนหันข้างให้กล้อง "+
-        "ระบบจะบอกท่าที่ต้องทำ แล้วรอให้ท่านพูดว่า เริ่ม จากนั้นจับเวลาให้ "+
+        "ระบบจะบอกท่าที่ต้องทำ แล้วรอคำสั่งเริ่ม จากนั้นจับเวลาให้ "+
         "เมื่อครบสิบวินาที ท่านหรือผู้ดูแลเป็นผู้ยืนยันว่าผ่านหรือไม่ผ่าน "+
-        "พูดว่า ช่วยเหลือ เมื่อใดก็ได้ เพื่อฟังคำสั่งทั้งหมด");
+        "ยกมือข้างเดียวค้างไว้เพื่อเริ่ม กดปุ่มช่วยเหลือเมื่อใดก็ได้เพื่อฟังวิธีสั่งงาน");
   setTimeout(function(){ if(S.screen==="balance")announce(false) },6000);
 }
 
