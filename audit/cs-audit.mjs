@@ -2753,6 +2753,55 @@ function layer7() {
       bad.join(" · "), "คงโครงสี่ชั้นและสถานะว่างไว้ · ทุกตัวเลขเป็นค่ารวมระดับกลุ่ม · ปุ่มที่พาไปดูรายบุคคลต้องขึ้นเฉพาะบทบาททีมดูแล");
   }
 
+  /* ---- X-135: ใบส่งต่อเป็นแบบฟอร์มสหวิชาชีพตามโครง CDC STEADI ไม่ใช่กล่องข้อความ 3 ช่อง ----
+     แพทย์ เภสัชกร พยาบาล และนักกายภาพต้องการข้อมูลคนละชุดเพื่อตัดสินใจ และต้องตอบกลับ
+     ให้เป็นโครงสร้างที่ผู้ประสานงานและครอบครัวใช้ต่อได้ ต้นแบบคือ CDC STEADI
+     (Patient Referral · Risk Factors Checklist · STEADI-Rx Provider Consult · TUG/4-Stage/
+     Chair Stand · Orthostatic BP · Recommended Program) ปรับให้เข้ากับบริบทไทย
+     สามอย่างที่ห้ามถดถอย
+       (1) แกนกลางแยก "ระบบพบอะไร" ออกจาก "ผู้เชี่ยวชาญสรุปอะไร" — ทุกแถวบอกที่มา
+       (2) แอปสมาชิกต้องส่งรายละเอียดครบขึ้นระบบกลาง ไม่งั้นใบส่งต่อของจริงจะว่าง
+       (3) ระบบไม่ส่งคำสั่งหยุด/ปรับยาถึงผู้เอาประกัน — บังคับทั้ง SQL โมดูล และเดโม */
+  {
+    const bad = [];
+    const rf = read("cs-referral-forms.js") || "", sql = read("supabase/22_referral_forms.sql") || "";
+    const be = read("cs-backend.js") || "", app = read("CareSignal-App.html") || "", st = read("CareSignal-Staff.html") || "", dm = read("cs-demo.js") || "", sw = read("sw.js") || "";
+    if (!rf) bad.push("ไม่มีโมดูล cs-referral-forms.js");
+    for (const k of ["MOD.pharmacist =", "MOD.doctor =", "MOD.physio =", "MOD.nurse ="]) if (rf.indexOf(k) < 0) bad.push("โมดูลขาดแบบฟอร์มของ " + k.replace("MOD.", "").replace(" =", ""));
+    if (!/verdict: \{ confirm: /.test(rf) || (rf.match(/confirm|not_confirm|need_more_info|advised|refer_other|follow_up/g) || []).length < 12) bad.push("ปุ่มมาตรฐาน 6 แบบไม่ครบ");
+    const nRisk = (rf.match(/\{ g: "/g) || []).length; if (nRisk !== 17) bad.push("Fall Risk Factors Checklist ต้องมี 17 แถว (พบ " + nRisk + ")");
+    const tugObs = (rf.match(/var TUG_OBS = \[[\s\S]*?\];/) || [""])[0];
+    if ((tugObs.match(/\{ k: "(slow|lob|short|arm|wall|shuffle|enbloc|device)", nm:/g) || []).length !== 8) bad.push("ข้อสังเกต TUG ต้องครบ 8 ข้อตาม STEADI");
+    if (!/bp_lie_s|bp_s1_s|bp_s3_s/.test(rf) || !/o\.lie\.s - x\.s >= 20/.test(rf) || !/o\.lie\.d - x\.d >= 10/.test(rf)) bad.push("ความดันเปลี่ยนท่าไม่ครบ 3 ท่า หรือเกณฑ์ไม่ใช่ 20/10");
+    if (!/class="src sys"|src\.sys|L\.src\[s\]/.test(rf) || !/self: "ผู้เอาประกันตอบ"/.test(rf) || !/pro: "ผู้เชี่ยวชาญกรอก"/.test(rf)) bad.push("แถวในเอกสารไม่บอกที่มาของข้อมูล");
+    if (/วินิจฉัยว่า|ต้องหยุดยา/.test(rf.replace(/ให้หยุดยา\(\?!เอง\)\|ให้หยุด/g, ""))) bad.push("โมดูลใช้ภาษาวินิจฉัยหรือสั่งหยุดยา");
+    if (!/ทบทวนกับผู้สั่งใช้/.test(rf)) bad.push("โมดูลไม่บังคับถ้อยคำ ทบทวนกับผู้สั่งใช้");
+    /* ฐานข้อมูล */
+    if (!/add column if not exists detail jsonb/.test(sql)) bad.push("ไม่มีคอลัมน์ assessments.detail");
+    if (!/'v', 2,/.test(sql) || !["'screen'", "'symptoms'", "'balance'", "'quality'", "'pharm_recs'"].every((k) => sql.indexOf(k) >= 0)) bad.push("build_referral_package ไม่ใช่ชุดข้อมูลรุ่น 2");
+    if (!/next_step text, note text, form jsonb\)/.test(sql) || !/vd not in \('confirm','not_confirm','need_more_info','advised','refer_other','follow_up'\)/.test(sql)) bad.push("return_review ไม่รับแบบฟอร์ม หรือไม่ตรวจคำตอบมาตรฐาน");
+    if (!/recommend ~ '\(ให้หยุดยา\|หยุดยาทันที\|เลิกยา\)'/.test(sql)) bad.push("ฐานข้อมูลไม่ปฏิเสธคำสั่งหยุดยา");
+    if (!/note text default null\)/.test(sql) || !/perform public\.return_review\(rid, finding, recommend, next_step, note, null::jsonb\)/.test(sql)) bad.push("ลายเซ็นเดิมของ return_review หายไป หน้าเก่าจะพัง");
+    /* ต่อสาย */
+    if (!/detail:\s+a\.detail\s+\|\| null/.test(be) || !/if \(form\) args\.form = form;/.test(be)) bad.push("backend ไม่ส่ง detail/form");
+    if (!/fallsDetail:rec\.fallsDetail,homeDetail:rec\.homeDetail,medsDetail:rec\.medsDetail/.test(app) || !/detail:\{steadi:rec\.steadi/.test(app) || !/balance:\{passed:rec\.balPassed/.test(app))
+      bad.push("แอปสมาชิกซิงก์ไม่ครบ — ใบส่งต่อของจริงจะว่าง");
+    if (!/cs-referral-forms\.js/.test(app) || !/CSReferralForms\.moduleSummaryHTML\(r,true\)/.test(app)) bad.push("ครอบครัวไม่เห็นผลตามวิชาชีพ");
+    if (!/cs-referral-forms\.js/.test(st) || !/RF\.docHTML\(fakeRef\(\),\{mode:"preview"/.test(st) || !/RF\.collect\(w,r\.destination\)/.test(st) || !/function refDocSheet\(r\)/.test(st) || !/window\.print\(\)/.test(st))
+      bad.push("คอนโซลไม่ได้ใช้แบบฟอร์ม หรือเปิดดู/พิมพ์ใบไม่ได้");
+    if (!/CSBackend\.returnReview\(r\.id,res\.finding,res\.recommend,res\.next_step,res\.note,res\.form\)/.test(st)) bad.push("คอนโซลไม่ส่งแบบฟอร์มกลับ");
+    if (!/function pkgV2\(S, userId\)/.test(dm) || !/var DEMO_FORM = \{/.test(dm) || !/returnReview: function \(rid, finding, recommend, nextStep, note, form\)/.test(dm) || !/\(ให้หยุดยา\|หยุดยาทันที\|เลิกยา\)/.test(dm))
+      bad.push("เดโมไม่ตรงกับฐานข้อมูลจริง");
+    if (!/"\.\/cs-referral-forms\.js"/.test(sw)) bad.push("service worker ไม่ได้แคชโมดูล ออฟไลน์จะพัง");
+    req(7, "X-135", "ใบส่งต่อเป็นแบบฟอร์มสหวิชาชีพตามโครง CDC STEADI ทุกแถวบอกที่มา ตอบกลับด้วยปุ่มมาตรฐาน 6 แบบ และไม่ส่งคำสั่งหยุดยา",
+        bad.length ? "FAIL" : "PASS",
+        bad.length ? bad.join(" · ")
+                   : "แกนกลาง + โมดูล 4 วิชาชีพ · Checklist 17 แถว · STEADI-Rx · TUG 8 ข้อสังเกต · Orthostatic BP 20/10 · migration 22 + backend + แอป + คอนโซล + เดโม + sw ต่อครบ");
+    if (bad.length) finding("HIGH", "X-135", "ใบส่งต่อกลับไปเป็นข้อความสั้น หรือใบของจริงว่างเพราะแอปไม่ส่งรายละเอียด",
+      "ผู้เชี่ยวชาญตัดสินใจไม่ได้จากคะแนนอย่างเดียว และถ้าแอปไม่ส่งประวัติล้ม/บ้าน/ท่าทรงตัวขึ้นระบบกลาง ใบส่งต่อของผู้เอาประกันจริงจะว่างทั้งที่แอปเก็บไว้แล้ว",
+      bad.join(" · "), "คงโมดูล cs-referral-forms.js เป็นแหล่งเดียว รัน 22_referral_forms.sql และห้ามตัดช่องซิงก์รายละเอียดออกจาก finishAssess");
+  }
+
   /* ---- ภาษาที่ห้ามใช้กับผู้ใช้ (NICE ไม่แนะนำให้แสดงความน่าจะเป็นว่าจะหกล้ม) ---- */
   const banned = [
     ["X-10", "ห้ามเรียกผู้ใช้ว่า \"ผู้ป่วย Red\"", /ผู้ป่วย\s*(Red|แดง)/i],

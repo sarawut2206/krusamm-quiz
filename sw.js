@@ -13,7 +13,7 @@
    หมายเหตุความเป็นส่วนตัว: Service Worker นี้แคชเฉพาะ "ไฟล์โปรแกรม"
    ไม่แตะข้อมูลผู้ใช้ และไม่มีการส่งข้อมูลใดออกจากเครื่อง
    ============================================================ */
-var VERSION = "caresignal-v90";
+var VERSION = "caresignal-v91";
 
 /* รับคำสั่งจากหน้าเว็บให้สลับเป็นเวอร์ชันใหม่ทันที (ใช้โดยระบบแจ้งอัปเดต) */
 self.addEventListener("message", function (e) {
@@ -31,6 +31,7 @@ var APP_SHELL = [
   "./cs-meds.js",
   "./cs-hospitals.js",
   "./cs-demo.js",
+  "./cs-referral-forms.js",
   "./cs-aruco.js",
   "./CareSignal-markers.pdf",
   "./manifest-staff.json",

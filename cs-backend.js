@@ -281,7 +281,9 @@ var CSBackend = (function () {
       meds_detail:    a.medsDetail    || null,
       test_quality:   a.testQuality   || null,
       baseline_level: a.baselineLevel || null,
-      not_tested:     !!a.notTested
+      not_tested:     !!a.notTested,
+      /* รายละเอียดที่แบบฟอร์มส่งต่อสหวิชาชีพใช้ (22_referral_forms.sql) */
+      detail:         a.detail        || null
     };
     var r = await sb.from("assessments").insert(row).select().single();
     if (r.error) throw r.error;
@@ -663,11 +665,12 @@ var CSBackend = (function () {
     return r.data;   /* รหัสรายการส่งต่อ */
   }
   /* ส่งผลกลับ — Refer Back: ผู้เชี่ยวชาญเขียนข้อค้นพบ คำแนะนำ และขั้นตอนถัดไป */
-  async function returnReview(referralId, finding, recommend, nextStep, note) {
+  async function returnReview(referralId, finding, recommend, nextStep, note, form) {
     if (!isCloud()) throw new Error("offline");
-    var r = await sb.rpc("return_review", {
-      rid: referralId, finding: finding, recommend: recommend || null, next_step: nextStep, note: note || null
-    });
+    /* มี form → ใช้ลายเซ็น 6 พารามิเตอร์ (22_referral_forms.sql) · ไม่มี → ลายเซ็นเดิม */
+    var args = { rid: referralId, finding: finding, recommend: recommend || null, next_step: nextStep, note: note || null };
+    if (form) args.form = form;
+    var r = await sb.rpc("return_review", args);
     if (r.error) throw r.error;
     return true;
   }

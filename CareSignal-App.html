@@ -415,6 +415,7 @@ body.printing .phone{display:none !important}
 try{if(window.self!==window.top)document.documentElement.setAttribute("data-embedded","1")}catch(e){document.documentElement.setAttribute("data-embedded","1")}
 </script>
 <script src="./cs-backend.js?v=4"></script>
+<script src="./cs-referral-forms.js?v=1"></script>
 <script src="./cs-meds.js?v=4"></script>
 <script src="./cs-aruco.js?v=1"></script>
 <script>
@@ -4659,9 +4660,18 @@ async function finishAssess(){
   (async function(){
     try{
       if(!CLOUD.session||!CSBackend.isCloud())return;
+      /* ส่งรายละเอียดครบชุด — แบบฟอร์มส่งต่อสหวิชาชีพ (22_referral_forms.sql) ต้องใช้
+         ของเดิมส่งแค่ตัวเลขหลัก ทำให้ประวัติล้ม บ้าน และท่าทรงตัวในใบส่งต่อว่างเปล่า */
       var a=await CSBackend.saveAssessment({at:rec.at,method:rec.method,ftsst:rec.ftsst,
         tug:rec.tug,reps:rec.reps,cv:rec.cv,gaps:rec.gaps,score:rec.score,max:rec.max,
-        tier:rec.tier,parts:rec.parts,verified:rec.verified,engine:ENGINE.version,durSec:rec.durSec});
+        tier:rec.tier,parts:rec.parts,verified:rec.verified,engine:ENGINE.version,durSec:rec.durSec,
+        safetyGate:{answers:rec.safety||null,verdict:rec.safetyVerdict||null},
+        fallsDetail:rec.fallsDetail,homeDetail:rec.homeDetail,medsDetail:rec.medsDetail,notTested:rec.notTested,
+        testQuality:{distance_ok:rec.tugDistanceOk,ended_by:rec.tugEndedBy,alone:rec.balAlone,alone_skip:rec.balAloneSkip},
+        detail:{steadi:rec.steadi||null,
+          tug:{out:rec.tugOut,back:rec.tugBack,distance_ok:rec.tugDistanceOk,turn_by:rec.tugTurnBy,back_by:rec.tugBackBy,ended_by:rec.tugEndedBy,mark_turn:rec.tugMarkTurn,reach:rec.tugReach,drift:rec.tugDrift,reaction:rec.tugReaction},
+          balance:{passed:rec.balPassed,label:rec.balLabel,stages:rec.balStages,alone:rec.balAlone,alone_skip:rec.balAloneSkip},
+          barthel:{total:rec.barthelTotal,sf:rec.barthelSF,band:rec.barthelBand},method:rec.method}});
       if(tr){
         var rs=await CSBackend.saveRiskSignal(a.id,{level:tr.level,nextDays:tr.nextDays,
           engine:ENGINE.version,flags:tr.flags.map(function(f){return{id:f.id,text:f.text,why:f.why}})});
@@ -7007,10 +7017,12 @@ async function resultsV(){
       pipe+
       (st.confirmed&&rv
         ? '<div class="rv"><b>ผลจากผู้เชี่ยวชาญ'+(r.reviewed_at?' · '+esc(thDate(r.reviewed_at)):'')+'</b>'+
+          (rv.form&&rv.form.verdict&&window.CSReferralForms?'<div style="margin:0 0 8px"><span style="display:inline-block;background:#DCFCE7;color:#166534;border-radius:99px;padding:2px 10px;font-weight:700;font-size:12.5px">'+esc(CSReferralForms.L.verdict[rv.form.verdict]||rv.form.verdict)+'</span></div>':'')+
           '<div class="row"><span>ข้อค้นพบ</span><span>'+esc(rv.finding||"—")+'</span>'+
           '<span>คำแนะนำ</span><span>'+esc(rv.recommend||"—")+'</span>'+
           '<span>ขั้นตอนถัดไป</span><span><b style="display:inline">'+esc(NEXT_NM[rv.next_step]||rv.next_step||"—")+'</b></span>'+
-          (rv.note?'<span>หมายเหตุ</span><span>'+esc(rv.note)+'</span>':'')+'</div></div>'
+          (rv.note?'<span>หมายเหตุ</span><span>'+esc(rv.note)+'</span>':'')+'</div>'+
+          (rv.form&&window.CSReferralForms?CSReferralForms.moduleSummaryHTML(r,true):'')+'</div>'
         : (st.k==="declined"||st.k==="unreachable"?'':'<p class="sub" style="margin:6px 0 0">รอผู้เชี่ยวชาญตรวจและส่งผลกลับ — ผลจะมาแสดงตรงนี้เมื่อยืนยันแล้ว</p>'))+
       '</div>';
   }).join("")+

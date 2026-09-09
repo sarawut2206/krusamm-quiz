@@ -142,6 +142,14 @@ h3{font-size:14.5px;margin:0 0 10px;color:var(--ink);font-weight:700}
 .demopanel .btnrow{margin-top:10px}
 .sheet{position:fixed;inset:0;background:rgba(22,35,59,.45);z-index:200;display:grid;place-items:start center;padding:20px;overflow:auto}
 .sheet .card{max-width:640px;width:100%;margin:0 0 40px}
+.sheet.wide .card{max-width:980px}
+.sheet .card.doc{padding:0;overflow:hidden}
+.sheet .card.doc .doctools{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:14px 18px 10px;flex-wrap:wrap}
+.sheet .card.doc .doctools .acts{display:flex;gap:8px}.sheet .card.doc .doctools .acts .ghostb{width:auto;padding:7px 12px;font-size:13px}
+.sheet .card.doc .btnrow{padding:0 18px 14px}.sheet .card.doc .tiny{padding:0 18px 14px}
+.rsn{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 8px}.rsn label{display:inline-flex;gap:6px;align-items:center;border:1px solid var(--line);border-radius:99px;padding:5px 11px;font-size:12.5px;cursor:pointer;background:#fff}
+.rsn label:has(input:checked){border-color:var(--brand);background:var(--brandt);color:var(--brand2);font-weight:600}
+@media print{body.printing>*:not(.sheet){display:none!important}body.printing .sheet{position:static;background:none;padding:0;overflow:visible}body.printing .sheet .card{max-width:none;box-shadow:none;border:0;margin:0}}
 .sheet h3{margin:0 0 4px}
 .pkg{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin:10px 0}
 .pkg .pk{background:var(--surf2);border:1px solid var(--line2);border-radius:8px;padding:10px 12px}
@@ -472,9 +480,11 @@ td.num{font-family:var(--mono);white-space:nowrap}
 <script>window.CS_AUTH_SCOPE="staff";/* แอปเจ้าหน้าที่ใช้ช่อง session แยกจากแอปสมาชิกเสมอ */</script>
 <script src="./cs-backend.js?v=4"></script>
 <script src="./cs-demo.js?v=1"></script>
+<script src="./cs-referral-forms.js?v=1"></script>
 <script src="./cs-meds.js?v=4"></script>
 <script src="./cs-hospitals.js?v=2"></script>
 <script>
+if(window.CSReferralForms)CSReferralForms.injectCSS();   /* สไตล์แบบฟอร์มส่งต่อสหวิชาชีพ */
 /* ============================================================
    CareSignal Staff — แอปเจ้าหน้าที่ (แยกจากแอปผู้เอาประกันโดยสิ้นเชิง)
    ------------------------------------------------------------
@@ -1338,6 +1348,7 @@ async function caseDetailV(caseId,userId){
           ((r.questions||[]).length?'<div class="tiny" style="margin:2px 0 4px">ถาม: '+r.questions.map(esc).join(" · ")+'</div>':'')+
           reviewHTML(r)+
           '<div class="btnrow" style="margin-top:4px;margin-bottom:8px">'+
+            '<button class="no" data-doc="'+r.id+'" style="font-size:12px;padding:7px;border-color:var(--brand);color:var(--brand)">ดูใบส่งต่อ</button>'+
             (r.status!=="booked"&&r.status!=="completed"&&r.status!=="outcome_recorded"?'<button class="ok" data-ref="'+r.id+'" data-to="booked" style="font-size:12px;padding:7px">นัดหมายแล้ว</button>':'')+
             (r.status!=="completed"&&r.status!=="outcome_recorded"?'<button class="ok" data-ref="'+r.id+'" data-to="completed" style="font-size:12px;padding:7px">ไปพบแล้ว</button>':'')+
             (r.status==="completed"?'<button class="ok" data-ref="'+r.id+'" data-to="outcome_recorded" style="font-size:12px;padding:7px">บันทึกผล</button>':'')+
@@ -1376,6 +1387,10 @@ async function caseDetailV(caseId,userId){
     b.disabled=true;
     try{await CSBackend.logContact(c,b.dataset.log2,note);toast("บันทึกแล้ว");caseDetailV(caseId,userId)}
     catch(e){toast("บันทึกไม่สำเร็จ");b.disabled=false}
+  })});
+  V.querySelectorAll("[data-doc]").forEach(function(b){b.addEventListener("click",function(){
+    var r=(d.refs||[]).filter(function(x){return x.id===b.dataset.doc})[0];
+    if(r){ r.profiles=r.profiles||{pseudonym:c.pseudonym,display_name:c.display_name,birth_year_be:c.birth_year_be,sex:c.sex}; refDocSheet(r) }
   })});
   V.querySelectorAll("[data-ref]").forEach(function(b){b.addEventListener("click",async function(){
     b.disabled=true;
@@ -2003,23 +2018,40 @@ function pkgHTML(p){
 }
 /* แผ่นส่งต่อ */
 async function referSheet(c, userId, caseId, dest){
-  var w=document.createElement("div"); w.className="sheet";
-  w.innerHTML='<div class="card"><div class="kick">ใบส่งต่อ</div><h3>ส่งต่อไปยัง'+esc(DEST_NM[dest]||dest)+'</h3>'+
+  /* แบบฟอร์มส่งต่อสหวิชาชีพ — ผู้ประสานงานเลือกเหตุผล (ระบบเสนอให้จากข้อมูล) เลือกคำถาม
+     แล้วเห็นเอกสารฉบับเดียวกับที่ปลายทางจะเห็นก่อนกดส่ง */
+  var RF=window.CSReferralForms;
+  var w=document.createElement("div"); w.className="sheet wide";
+  w.innerHTML='<div class="card"><div class="kick">ใบส่งต่อ · แบบฟอร์มสหวิชาชีพ (โครง CDC STEADI)</div><h3>ส่งต่อไปยัง'+esc(DEST_NM[dest]||dest)+'</h3>'+
     '<p class="sub">'+esc(c.pseudonym||"")+' · '+esc(c.display_name||"")+(c.age?' · '+c.age+' ปี':'')+' · ส่งจาก '+esc(ST.name||ST.email||"")+(ST.org?' ('+esc(ST.org)+')':'')+'</p>'+
-    '<div class="rowline"><span class="k">เหตุผลการส่งต่อ</span><span class="v" style="font-family:inherit;font-weight:600;text-align:right">'+
-      ((c.signals||[]).map(function(x){return esc(x.nm||SIG_NM[x.k]||x.k)}).join(" · ")||"สัญญาณเสี่ยง")+'</span></div>'+
-    '<h4 style="margin:12px 0 4px;font-size:14px">ข้อมูลประกอบ ณ เวลาส่ง</h4><div id="pkgHost"><div class="empty" style="padding:8px">กำลังรวบรวม…</div></div>'+
-    '<h4 style="margin:12px 0 4px;font-size:14px">คำถามที่ต้องการให้'+esc(DEST_NM[dest]||dest)+'ตอบ <span class="tiny">(เลือกอย่างน้อย 1)</span></h4>'+
+    '<h4 style="margin:12px 0 4px;font-size:14px">1 · เหตุผลการส่งต่อ <span class="tiny" style="margin:0">(เลือกได้มากกว่า 1 — ระบบติ๊กให้ตามข้อมูล ท่านยืนยันเอง)</span></h4><div class="rsn" id="rsn"><span class="tiny" style="margin:0">กำลังรวบรวม…</span></div>'+
+    '<h4 style="margin:12px 0 4px;font-size:14px">2 · คำถามที่ต้องการให้'+esc(DEST_NM[dest]||dest)+'ตอบ <span class="tiny" style="margin:0">(เลือกอย่างน้อย 1)</span></h4>'+
     '<div class="qs">'+(Q_BANK[dest]||[]).map(function(q,i){return '<label><input type="checkbox" value="'+esc(q)+'"'+(i===0?' checked':'')+'> '+esc(q)+'</label>'}).join("")+
       '<label><input type="checkbox" id="qCustomOn"> <input id="qCustom" placeholder="คำถามอื่น…" style="flex:1;font-family:inherit;font-size:13px;padding:6px 9px;border-radius:9px;border:1px solid var(--line);background:#fff;color:var(--ink)"></label></div>'+
-    '<div class="field" style="margin-top:8px"><label>สิ่งที่ต้องการให้ทำ (สั้น ๆ)</label><input id="rAct" placeholder="เช่น ทบทวนรายการยาและแนะนำแพทย์" value="'+esc((Q_BANK[dest]||[""])[0].slice(0,40))+'"></div>'+
+    '<div class="field" style="margin-top:8px"><label>สิ่งที่ต้องการให้ทำ (สั้น ๆ)</label><input id="rAct" placeholder="เช่น ทบทวนรายการยาและแนะนำแพทย์"></div>'+
     '<div class="field"><label>กำหนดตอบกลับภายใน</label><select id="rDue" style="width:100%;font-family:inherit;font-size:15px;padding:11px;border-radius:12px;border:1.5px solid var(--line);background:#fff;color:var(--ink)">'+
-      '<option value="24"'+(c.level==="urgent"?" selected":"")+'>24 ชั่วโมง</option><option value="48"'+(c.level==="decline"?" selected":"")+'>48 ชั่วโมง</option><option value="72"'+(c.level==="watch"?" selected":"")+'>72 ชั่วโมง</option><option value="168">7 วัน</option></select></div>'+
-    '<div class="btnrow"><button class="no" id="rCancel">ยกเลิก</button><button class="ok" id="rSend">ส่งต่อพร้อมชุดข้อมูล</button></div>'+
-    '<p class="tiny">ระบบบันทึกว่าใครส่ง ส่งเมื่อใด และปลายทางต้องตอบภายในเมื่อใด · ผู้เชี่ยวชาญต้องขอความยินยอมผู้เอาประกันก่อนเปิดดูรายละเอียด</p></div>';
+      '<option value="24"'+(c.level==="urgent"?" selected":"")+'>24 ชั่วโมง</option><option value="48"'+(c.level==="decline"?" selected":"")+'>48 ชั่วโมง</option><option value="72"'+(c.level==="watch"||c.level==="stable"?" selected":"")+'>72 ชั่วโมง</option><option value="168">7 วัน</option></select></div>'+
+    '<h4 style="margin:12px 0 4px;font-size:14px">3 · เอกสารที่'+esc(DEST_NM[dest]||dest)+'จะเห็น <span class="tiny" style="margin:0">(สำเนา ณ เวลาส่ง — ปลายทางเห็นสิ่งเดียวกับที่ท่านเห็นตอนนี้)</span></h4>'+
+    '<div id="pkgHost"><div class="empty" style="padding:8px">กำลังรวบรวม…</div></div>'+
+    '<div class="btnrow"><button class="no" id="rCancel">ยกเลิก</button><button class="ok" id="rSend">ส่งต่อพร้อมแบบฟอร์ม</button></div>'+
+    '<p class="tiny">ระบบบันทึกว่าใครส่ง ส่งเมื่อใด และปลายทางต้องตอบภายในเมื่อใด · ผู้เชี่ยวชาญต้องขอความยินยอมรายครั้งก่อนเปิดข้อมูลคลินิกเชิงลึก · ใบส่งต่อนี้ไม่ใช่ใบส่งตัวรักษา</p></div>';
   document.body.appendChild(w);
-  try{ var p=await CSBackend.previewPackage(userId); w.querySelector("#pkgHost").innerHTML=pkgHTML(p) }
-  catch(e){ w.querySelector("#pkgHost").innerHTML='<div class="warnbox">รวบรวมข้อมูลไม่ได้: '+esc(e.message||e)+'</div>' }
+  var pkg=null;
+  function chosenReasons(){ return [...w.querySelectorAll('#rsn input:checked')].map(function(x){return x.value}) }
+  function fakeRef(){ return {id:"", destination:dest, level:c.level, reasons:chosenReasons().concat((c.signals||[]).map(function(x){return x.k})),
+    action:w.querySelector("#rAct").value.trim(), questions:[...w.querySelectorAll('.qs input[type=checkbox]:checked')].map(function(x){return x.value}).filter(function(v){return v&&v!=="on"}),
+    created_at:new Date().toISOString(), reply_due:new Date(Date.now()+(+w.querySelector("#rDue").value)*36e5).toISOString(), package:pkg,
+    profiles:{pseudonym:c.pseudonym, display_name:c.display_name, age:c.age, sex:c.sex, mobility_aid:c.mobility_aid}} }
+  function renderDoc(){ if(!pkg||!RF)return; w.querySelector("#pkgHost").innerHTML=pkgHTML(pkg)+RF.docHTML(fakeRef(),{mode:"preview",senderName:ST.name||ST.email,senderOrg:ST.org,sigNm:SIG_NM}) }
+  try{
+    pkg=await CSBackend.previewPackage(userId);
+    var sugg=RF?RF.suggestReasons(pkg,dest):[];
+    w.querySelector("#rsn").innerHTML=(RF?RF.reasonsFor(dest):[]).map(function(z){
+      return '<label><input type="checkbox" value="'+esc(z.k)+'"'+(sugg.indexOf(z.k)>=0?' checked':'')+'> '+esc(z.nm)+(sugg.indexOf(z.k)>=0?' <span style="color:var(--brand);font-size:11px">· ระบบเสนอ</span>':'')+'</label>'}).join("")||'<span class="tiny">—</span>';
+    renderDoc();
+  }catch(e){ w.querySelector("#pkgHost").innerHTML='<div class="warnbox">รวบรวมข้อมูลไม่ได้: '+esc(e.message||e)+'</div>' }
+  w.addEventListener("change",function(e){ if(e.target.closest("#rsn")||e.target.closest(".qs")||e.target.id==="rDue")renderDoc() });
+  w.querySelector("#rAct").addEventListener("change",renderDoc);
   w.querySelector("#rCancel").addEventListener("click",function(){w.remove()});
   w.querySelector("#rSend").addEventListener("click",async function(){
     var qs=[...w.querySelectorAll('.qs input[type=checkbox]:checked')].map(function(x){return x.value}).filter(function(v){return v&&v!=="on"});
@@ -2027,12 +2059,13 @@ async function referSheet(c, userId, caseId, dest){
     qs=qs.filter(function(q){return q&&q!=="on"});
     if(!qs.length){toast("เลือกคำถามอย่างน้อย 1 ข้อ");return}
     var act=w.querySelector("#rAct").value.trim(); if(!act){toast("ระบุสิ่งที่ต้องการให้ทำ");return}
+    var reasons=chosenReasons(); if(!reasons.length){toast("เลือกเหตุผลการส่งต่ออย่างน้อย 1 ข้อ");return}
     var b=this; b.disabled=true; b.textContent="กำลังส่ง…";
     try{
       await CSBackend.sendReferral(userId, caseId, dest, act, c.level,
-        (c.signals||[]).map(function(x){return x.k}), qs, +w.querySelector("#rDue").value);
-      toast("ส่งต่อแล้ว พร้อมชุดข้อมูลและคำถาม "+qs.length+" ข้อ"); w.remove(); caseDetailV(caseId,userId);
-    }catch(e){ toast("ส่งไม่สำเร็จ: "+(e.message||e)); b.disabled=false; b.textContent="ส่งต่อพร้อมชุดข้อมูล" }
+        reasons.concat((c.signals||[]).map(function(x){return x.k})), qs, +w.querySelector("#rDue").value);
+      toast("ส่งต่อแล้ว พร้อมแบบฟอร์มและคำถาม "+qs.length+" ข้อ"); w.remove(); caseDetailV(caseId,userId);
+    }catch(e){ toast("ส่งไม่สำเร็จ: "+(e.message||e)); b.disabled=false; b.textContent="ส่งต่อพร้อมแบบฟอร์ม" }
   });
 }
 
@@ -2043,38 +2076,46 @@ async function referSheet(c, userId, caseId, dest){
 var NEXT_NM={sufficient:"ข้อมูลเพียงพอ ไม่ต้องทำเพิ่ม",need_more_info:"ขอข้อมูลเพิ่มเติม",
   book_assessment:"นัดประเมินต่อ",refer_doctor:"ส่งต่อแพทย์",follow_plan:"ติดตามตามแผน"};
 function reviewSheet(r, onDone){
-  var pkg=r.package, qs=r.questions||[];
-  var w=document.createElement("div"); w.className="sheet";
-  w.innerHTML='<div class="card"><div class="kick">ส่งผลทบทวนกลับ</div><h3>'+esc((r.profiles||{}).pseudonym||"")+' · '+esc((r.profiles||{}).display_name||"")+'</h3>'+
-    '<p class="sub">เหตุผล: '+esc(r.action||"")+(r.reply_due?' · กำหนดตอบ '+thDate(r.reply_due):'')+'</p>'+
-    (pkg?'<h4 style="margin:10px 0 4px;font-size:14px">ข้อมูลประกอบที่ส่งมา</h4>'+pkgHTML(pkg):'')+
-    (qs.length?'<h4 style="margin:10px 0 4px;font-size:14px">คำถามจากผู้ประสานงาน</h4><ol style="margin:0 0 8px 18px;font-size:13.5px;color:var(--ink2)">'+qs.map(function(q){return '<li>'+esc(q)+'</li>'}).join("")+'</ol>':'')+
-    '<div class="field"><label>ข้อค้นพบ *</label><textarea id="rvF" rows="3" placeholder="สิ่งที่ท่านพบจากการทบทวน"></textarea></div>'+
-    '<div class="field"><label>คำแนะนำ</label><textarea id="rvR" rows="2" placeholder="สิ่งที่แนะนำให้ทำ (ระบบไม่สั่งหยุดหรือปรับยา — ความเห็นนี้เป็นของท่าน)"></textarea></div>'+
-    '<div class="field"><label>ขั้นตอนถัดไป *</label><select id="rvN" style="width:100%;font-family:inherit;font-size:15px;padding:11px;border-radius:12px;border:1.5px solid var(--line);background:#fff;color:var(--ink)">'+
-      Object.keys(NEXT_NM).map(function(k){return '<option value="'+k+'">'+esc(NEXT_NM[k])+'</option>'}).join("")+'</select></div>'+
-    '<div class="field"><label>หมายเหตุถึงผู้ประสานงาน</label><input id="rvX" placeholder="ไม่บังคับ"></div>'+
-    '<div class="btnrow"><button class="no" id="rvC">ยกเลิก</button><button class="ok" id="rvS">ส่งผลกลับผู้ประสานงาน</button></div>'+
-    '<p class="tiny">ผลนี้จะไปตั้งงานถัดไปของเคสให้ผู้ประสานงานเห็นทันที และบันทึกชื่อท่านในบันทึกตรวจสอบ</p></div>';
-  w.querySelectorAll("textarea").forEach(function(t){t.style.cssText="width:100%;font-family:inherit;font-size:14px;padding:10px;border:1.5px solid var(--line);border-radius:12px;background:#fff;color:var(--ink)"});
+  /* ผู้เชี่ยวชาญเห็นเอกสารทั้งใบ (แกนกลาง + โมดูลของวิชาชีพตน) แล้วตอบในแบบฟอร์มเดียวกัน
+     คำตอบเป็นโครงสร้างตาม CDC STEADI และยังคง finding/recommend/next_step ให้ทุกหน้าเดิมอ่านได้ */
+  var RF=window.CSReferralForms, pr=r.profiles||{};
+  var w=document.createElement("div"); w.className="sheet wide";
+  w.innerHTML='<div class="card doc"><div class="doctools rf-noprint"><div><div class="kick">ส่งผลทบทวนกลับ · '+esc(DEST_NM[r.destination]||r.destination)+'</div>'+
+      '<h3 style="margin:2px 0 0">'+esc(pr.pseudonym||"")+' · '+esc(pr.display_name||"")+'</h3><p class="sub" style="margin:2px 0 0">'+esc(r.action||"")+(r.reply_due?' · กำหนดตอบ '+thDate(r.reply_due):'')+'</p></div>'+
+      '<div class="acts"><button class="ghostb" id="rvPrint">🖨 พิมพ์ / บันทึก PDF</button><button class="ghostb" id="rvC">ปิด</button></div></div>'+
+    '<div id="rvDoc" style="padding:0 18px">'+(RF?RF.docHTML(r,{senderName:r.sent_by_name,sigNm:SIG_NM,reviewerName:ST.name||ST.email,reviewerOrg:ST.org}):pkgHTML(r.package))+'</div>'+
+    '<div class="btnrow rf-noprint"><button class="no" id="rvC2">ยกเลิก</button><button class="ok" id="rvS">ส่งผลกลับผู้ประสานงาน</button></div>'+
+    '<p class="tiny rf-noprint">ผลนี้จะไปตั้งงานถัดไปของเคสให้ผู้ประสานงานเห็นทันที ครอบครัวจะเห็นเฉพาะข้อค้นพบ คำแนะนำ และขั้นตอนถัดไป · ชื่อท่านอยู่ในบันทึกตรวจสอบ · ระบบไม่ส่งคำสั่งหยุดหรือปรับยาถึงผู้เอาประกันโดยตรง</p></div>';
   document.body.appendChild(w);
-  w.querySelector("#rvC").addEventListener("click",function(){w.remove()});
+  if(RF)RF.bindOrtho(w);
+  var close=function(){w.remove()};
+  w.querySelector("#rvC").addEventListener("click",close); w.querySelector("#rvC2").addEventListener("click",close);
+  w.querySelector("#rvPrint").addEventListener("click",function(){ document.body.classList.add("printing"); window.print(); setTimeout(function(){document.body.classList.remove("printing")},800) });
   w.querySelector("#rvS").addEventListener("click",async function(){
-    var f=w.querySelector("#rvF").value.trim();
-    if(f.length<5){toast("เขียนข้อค้นพบอย่างน้อย 1 ประโยค");return}
+    var res=RF?RF.collect(w,r.destination):null;
+    if(!res){toast("โมดูลแบบฟอร์มยังไม่โหลด");return}
+    if(!res.ok){toast(res.errors[0]);return}
     var b=this; b.disabled=true;
-    try{ await CSBackend.returnReview(r.id,f,w.querySelector("#rvR").value.trim(),w.querySelector("#rvN").value,w.querySelector("#rvX").value.trim());
+    try{ await CSBackend.returnReview(r.id,res.finding,res.recommend,res.next_step,res.note,res.form);
       toast("ส่งผลกลับแล้ว"); w.remove(); if(onDone) onDone(); }
     catch(e){ toast("ส่งไม่สำเร็จ: "+(e.message||e)); b.disabled=false }
   });
 }
+/* เปิดดูใบส่งต่อฉบับเต็ม (อ่านอย่างเดียว) — ผู้ประสานงานย้อนดูสิ่งที่ส่งไป และผลที่กลับมา */
+function refDocSheet(r){
+  var RF=window.CSReferralForms, pr=r.profiles||{};
+  var w=document.createElement("div"); w.className="sheet wide";
+  w.innerHTML='<div class="card doc"><div class="doctools rf-noprint"><div><div class="kick">ใบส่งต่อ · '+esc(DEST_NM[r.destination]||r.destination)+'</div>'+
+      '<h3 style="margin:2px 0 0">'+esc(pr.pseudonym||"")+' · '+esc(pr.display_name||"")+'</h3><p class="sub" style="margin:2px 0 0">'+esc(refNm2(r.status))+'</p></div>'+
+      '<div class="acts"><button class="ghostb" id="rdPrint">🖨 พิมพ์ / บันทึก PDF</button><button class="ghostb" id="rdC">ปิด</button></div></div>'+
+    '<div style="padding:0 18px 18px">'+(RF?RF.docHTML(r,{mode:"readonly",senderName:r.sent_by_name,sigNm:SIG_NM}):pkgHTML(r.package))+'</div></div>';
+  document.body.appendChild(w);
+  w.querySelector("#rdC").addEventListener("click",function(){w.remove()});
+  w.querySelector("#rdPrint").addEventListener("click",function(){ document.body.classList.add("printing"); window.print(); setTimeout(function(){document.body.classList.remove("printing")},800) });
+}
 function reviewHTML(r){
-  var v=r.review; if(!v) return "";
-  return '<div class="rv"><b>✓ ผลทบทวนส่งกลับแล้ว · '+thDate(r.reviewed_at)+'</b><div class="row">'+
-    '<span>ข้อค้นพบ</span><span>'+esc(v.finding||"")+'</span>'+
-    (v.recommend?'<span>คำแนะนำ</span><span>'+esc(v.recommend)+'</span>':'')+
-    '<span>ขั้นตอนถัดไป</span><span><b style="display:inline">'+esc(NEXT_NM[v.next_step]||v.next_step)+'</b></span>'+
-    (v.note?'<span>หมายเหตุ</span><span>'+esc(v.note)+'</span>':'')+'</div></div>';
+  if(!r.review) return "";
+  return window.CSReferralForms?CSReferralForms.summaryHTML(r):'<div class="rv"><b>✓ ผลทบทวนส่งกลับแล้ว</b>'+esc(r.review.finding||"")+'</div>';
 }
 
 /* ============================================================
@@ -2529,7 +2570,8 @@ async function referV(){
         {k:"_wait",label:"ค้างมาแล้ว",num:true,search:false,render:function(r){return (r._over?'<b style="color:var(--c1)">':'')+dayTxt(r._wait)+(r._over?' ⚠</b>':'')}},
         {k:"_next",label:"งานถัดไป",render:function(r){return esc(r._next)+(r.review?'<span class="sub" style="color:var(--c4)">✓ ส่งผลกลับแล้ว</span>':'')}},
         {k:"act",label:"การกระทำ",sort:false,search:false,cls:"act",render:function(r){
-          return (isClinician()&&!r.review?'<button class="pri claim" data-review="'+esc(r.id)+'">ส่งผลทบทวนกลับ</button>':'—')}}
+          return (isClinician()&&!r.review?'<button class="pri claim" data-review="'+esc(r.id)+'">เปิดแบบฟอร์มและตอบ</button>':'')+
+            '<button class="ghostb" data-doc="'+esc(r.id)+'" style="width:auto;display:inline-block;margin-left:4px;padding:6px 10px;font-size:12px">ดูใบส่งต่อ</button>'}}
       ]})+'</div>';
 
   /* ---- รายการที่ปิดแล้ว: ผู้เชี่ยวชาญต้องย้อนดูผลที่ตนส่งกลับได้ และลิงก์ตรง (#ref=)
@@ -2546,12 +2588,9 @@ async function referV(){
     dashTable({id:"referClosed",rows:closed,sort:{k:"_when",dir:"desc"},empty:"ยังไม่มีรายการที่ปิด",rowKey:function(r){return r.id},
       rowAttr:function(r){return 'data-ref="'+esc(r.id)+'"'},
       detail:function(r){var v=r.review; if(!v&&!r.outcome)return null;
-        return '<div class="rv"><b>ผลที่ส่งกลับ'+(r.reviewed_at?' · '+esc(thDate(r.reviewed_at)):'')+'</b>'+
-          (v?'<div class="row"><span>ข้อค้นพบ</span><span>'+esc(v.finding||"—")+'</span></div>'+
-             '<div class="row"><span>คำแนะนำ</span><span>'+esc(v.recommend||"—")+'</span></div>'+
-             '<div class="row"><span>ขั้นตอนถัดไป</span><span>'+esc(NEXT_NM[v.next_step]||v.next_step||"—")+'</span></div>'+
-             (v.note?'<div class="row"><span>หมายเหตุ</span><span>'+esc(v.note)+'</span></div>':''):'')+
-          (r.outcome?'<div class="row"><span>ผลหลังรับบริการ</span><span>'+esc(r._res)+(r.outcome.note?' — '+esc(r.outcome.note):'')+'</span></div>':'')+'</div>'},
+        return (v?reviewHTML(r):'')+
+          (r.outcome?'<div class="rv"><div class="row"><span>ผลหลังรับบริการ</span><span>'+esc(r._res)+(r.outcome.note?' — '+esc(r.outcome.note):'')+'</span></div></div>':'')+
+          '<button class="ghostb" data-doc="'+esc(r.id)+'" style="width:auto;display:inline-block;padding:6px 10px;font-size:12px;margin:4px 0 8px">ดูใบส่งต่อฉบับเต็ม</button>'},
       cols:[
         {k:"_ps",label:"รหัส",cls:"id"},
         {k:"_nm",label:"ผู้เอาประกัน"},
@@ -2569,6 +2608,12 @@ async function referV(){
       b.addEventListener("click",function(){
         var r=rows.filter(function(x){return x.id===b.dataset.review})[0];
         if(r) reviewSheet(r, function(){ referV() });
+      });
+    });
+    V.querySelectorAll("[data-doc]").forEach(function(b){
+      b.addEventListener("click",function(e){ e.stopPropagation();
+        var r=rows.filter(function(x){return x.id===b.dataset.doc})[0];
+        if(r) refDocSheet(r);
       });
     });
   }

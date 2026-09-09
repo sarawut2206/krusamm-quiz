@@ -29,7 +29,7 @@
     doctor: "แพทย์", nurse: "พยาบาล", admin: "ผู้ดูแลระบบ", insurer: "บริษัทประกัน" };
   var role = ROLE_ALIAS[String(want).toLowerCase()] || "care_manager";
 
-  var STORE = "cs-demo-state-v3";   /* เปลี่ยนเลขรุ่นทุกครั้งที่รูปแบบข้อมูลเปลี่ยน แท็บที่เปิดค้างจะได้ไม่ใช้ข้อมูลรุ่นเก่า */
+  var STORE = "cs-demo-state-v5";   /* เปลี่ยนเลขรุ่นทุกครั้งที่รูปแบบข้อมูลเปลี่ยน แท็บที่เปิดค้างจะได้ไม่ใช้ข้อมูลรุ่นเก่า */
   var ORG = "โรงพยาบาลสาธิต (ข้อมูลสังเคราะห์)";
   var NOW = Date.now();
   var H = 3600e3, D = 24 * H;
@@ -64,6 +64,60 @@
   var PROV = ["เชียงใหม่", "เชียงใหม่", "เชียงใหม่", "ลำพูน", "กรุงเทพมหานคร", "กรุงเทพมหานคร", "ขอนแก่น", "นครราชสีมา", "สงขลา", "ชลบุรี"];
   var SLA = { urgent: 24, decline: 48, watch: 72, stable: 168 };
   var NEXT_DAYS = { urgent: 7, decline: 21, watch: 45, stable: 90 };
+
+  /* ---------- ชุดข้อมูลส่งต่อรุ่น 2 — รูปแบบเดียวกับ build_referral_package() ใน 22_referral_forms.sql ----------
+     ข้อมูลสาธิตเก็บแบบย่อ (falls12m/injured/…) จึงแปลงเป็นรหัสชุดเดียวกับที่แอปสมาชิกบันทึกจริง */
+  var HAZ_ORDER = ["rail", "light", "wet", "rug", "shoe", "stair", "reach"];
+  function pkgV2(S, userId) {
+    var as = S.assess.filter(function (a) { return a.user_id === userId; }).sort(byTime("assessed_at"));
+    if (!as.length) return null;
+    var f = as[0], l = as[as.length - 1];
+    var sigs = S.signals.filter(function (g) { return g.user_id === userId; }).sort(byTime("created_at"));
+    var sg = sigs[sigs.length - 1] || null;
+    var meds = S.meds.filter(function (x) { return x.user_id === userId && x.active !== false; }).map(function (x) {
+      return { inn: x.inn, brand_text: x.brand_text || null, dose_text: x.dose_text || null, freq_text: x.freq_text || null, frid_group: x.frid_group, frid_level: x.frid_level, confirmed_by: x.confirmed_by, source: x.source || "manual" }; });
+    var fd = l.falls_detail || {}, hd = l.home_detail || {}, md = l.meds_detail || {}, sgate = l.safety_gate || {};
+    var lv = sg ? sg.level : ({ 1: "stable", 2: "watch", 3: "decline", 4: "urgent" }[l.tier] || "watch");
+    var alone = !!(hd.alone || sgate.alone);
+    /* ท่าทรงตัว: จากคะแนนย่อย 0–3 = จำนวนท่าที่ผ่าน */
+    var passed = l.parts && l.parts.balance != null ? +l.parts.balance : null;
+    var stages = null;
+    if (passed !== null) {
+      stages = [0, 1, 2, 3].map(function (i) {
+        var nm = ["เท้าชิดกัน", "กึ่งต่อเท้า", "ต่อเท้าเป็นเส้นตรง", "ยืนขาเดียว"][i];
+        if (i === 3 && alone) return { stage: nm, held: 0, pass: false, attempts: 0, skipped: "alone", reason: "ไม่ได้ทำ — ทำคนเดียว ท่ายืนขาเดียวต้องมีผู้ดูแลอยู่ข้าง ๆ ตาม STEADI", decidedBy: "system-safety" };
+        if (i < passed) return { stage: nm, held: 10, pass: true, attempts: 1, decidedBy: "human" };
+        if (i === passed) return { stage: nm, held: [4, 6, 7, 5][i], pass: false, attempts: 1, decidedBy: "human" };
+        return { stage: nm, held: 0, pass: false, attempts: 0, skipped: "stopped", reason: "หยุดหลังท่าก่อนหน้าไม่ผ่าน" };
+      });
+    }
+    var tug = l.tug_seconds != null ? +l.tug_seconds : null;
+    var hazards = hd.hazards || HAZ_ORDER.slice(0, Math.max(0, +hd.count || 0));
+    var bar = { 2: 20, 1: 17, 0: 13 }[l.parts && l.parts.adl] ; if (l.adl_text) { var mb = /(\d+)\/20/.exec(l.adl_text); if (mb) bar = +mb[1]; }
+    var pharm = [];
+    S.refs.filter(function (r) { return r.user_id === userId && r.destination === "pharmacist" && r.review && r.review.form && r.review.form.problems; })
+      .sort(byTime("reviewed_at", true)).slice(0, 1).forEach(function (r) { pharm = r.review.form.problems; });
+    return {
+      v: 2, built_at: iso(Date.now()), consent: { assessment: true },
+      screen: { fell: (+fd.falls12m || 0) > 0, unsteady: lv === "decline" || lv === "urgent", worried: lv === "urgent" || !!fd.injured },
+      falls: { count: fd.falls12m != null ? +fd.falls12m : null, when: fd.falls12m ? 1 : null, injury: fd.injured ? 2 : 0, loc: fd.unconscious ? 2 : 0, getup: fd.cannot_rise ? 3 : 0 },
+      symptoms: { faint: (l.meds_detail && l.meds_detail.ortho) ? 2 : 0, chest: 0, stroke: 0, injury: 0, helper: alone ? 1 : 0 },
+      meds: { n: md.n != null ? +md.n : meds.length, high: meds.filter(function (x) { return x.frid_level === 2; }).length || (+md.high || 0), mod: meds.filter(function (x) { return x.frid_level === 1; }).length,
+        items: meds, symptoms: md.symptoms || (md.high ? ["drowsy"] : []), changed: md.changed || [] },
+      medications: meds,
+      mobility: { ftsst_first: f.ftsst_seconds, ftsst_last: l.ftsst_seconds, tug_first: f.tug_seconds, tug_last: l.tug_seconds, first_at: f.assessed_at, last_at: l.assessed_at,
+        n_assessments: as.length, reps: l.reps || 5, cadence_cv: l.cadence_cv,
+        tug: tug == null ? {} : { out: Math.round(tug * 0.48 * 10) / 10, back: Math.round(tug * 0.52 * 10) / 10, distance_ok: l.method === "camera_aruco", turn_by: "marker", ended_by: "gesture", reach: 1, drift: 0.12, reaction: 0.9 } },
+      balance: passed === null ? {} : { passed: passed, label: ["ผ่าน 0 ท่า", "ผ่าน 1 ท่า", "ผ่าน 2 ท่า", "ผ่าน 3 ท่า", "ผ่านครบ"][passed] || "", stages: stages, alone_skip: alone },
+      adl: { first: f.parts ? f.parts.adl : null, last: l.parts ? l.parts.adl : null, barthel_total: bar != null ? bar : null, barthel_sf: null, barthel_band: bar == null ? null : bar >= 19 ? "ทำเองได้" : bar >= 15 ? "พึ่งพาบางส่วน" : "พึ่งพามาก" },
+      home: { hazards: hazards, helper: alone ? "alone" : (hazards.length >= 2 ? "day" : "full"), count: hazards.length, alone: alone },
+      quality: { method: l.method, identity_verified: !!l.identity_verified, not_tested: !!l.not_tested, safety_verdict: { safe: sgate.ok !== false, reds: [], alone: alone, urgent: false } },
+      risk: { tier: l.tier, score: l.score, max: 12, level: lv, flags: sg ? sg.flags : [], next_days: sg ? sg.next_days : null },
+      pharm_recs: pharm,
+      open_followups: S.fups.filter(function (x) { return x.user_id === userId && x.status === "pending"; }).length,
+      open_referrals: S.refs.filter(function (x) { return x.user_id === userId && ["outcome_recorded", "declined"].indexOf(x.status) < 0; }).length
+    };
+  }
 
   function build() {
     var r = rng(20260919), BE = new Date().getFullYear() + 543;
@@ -135,13 +189,7 @@
         attempts: 1, unreachable: false, next_action: null, closed_at: ago(24 * 30), close_reason: "ผลประเมินซ้ำดีขึ้น ครอบครัวยืนยันทำตามแผน", note: null, updated_at: ago(24 * 30) });
     }
     /* รายการส่งต่อ 6 รายการ ครบทุกสถานะ */
-    function pkg(m) {
-      var as = S.assess.filter(function (a) { return a.user_id === m.id; });
-      var f = as[0], l = as[as.length - 1];
-      return { built_at: iso(NOW - 2 * H), falls: l.falls_detail, medications: S.meds.filter(function (x) { return x.user_id === m.id; }).map(function (x) { return { inn: x.inn, frid_group: x.frid_group, frid_level: x.frid_level, confirmed_by: x.confirmed_by }; }),
-        mobility: { ftsst_first: f.ftsst_seconds, ftsst_last: l.ftsst_seconds, tug_first: f.tug_seconds, tug_last: l.tug_seconds, first_at: f.assessed_at, last_at: l.assessed_at, n_assessments: as.length },
-        adl: { first: f.parts.adl, last: l.parts.adl }, home: l.home_detail, risk: { tier: l.tier, score: l.score, max: 12 }, open_followups: 0, open_referrals: 1, consent: { assessment: true } };
-    }
+    function pkg(m) { return pkgV2(S, m.id); }
     var REFS = [
       [3, "pharmacist", "pending", 30, "ทบทวนรายการยา 4 รายการ มียากลุ่มเสี่ยงสูง 1 รายการ", ["ยารายการใดควรทบทวนกับแพทย์ผู้สั่งยา", "มีปฏิกิริยาระหว่างยาที่เพิ่มความเสี่ยงหกล้มหรือไม่"], null],
       [7, "physio", "acknowledged", 60, "ประเมินการเดินและโปรแกรมฝึกกำลังขา", ["ควรเริ่มโปรแกรมฝึกแบบใด", "ต้องใช้อุปกรณ์ช่วยเดินหรือไม่"], null],
@@ -215,6 +263,8 @@
        ที่ "ดีขึ้น" ในตัวเลขของบริษัทประกัน (ถดถอย → เฝ้าสังเกต)
        เวลาทั้งหมดนับถอยหลังจากวันนี้ วันที่ 0 = ลูกสาวแจ้งเหตุเมื่อ 44 วันก่อน
        ============================================================ */
+    /* ใบส่งต่อที่เพาะไว้ต้องมีชุดข้อมูลรุ่น 2 เหมือนของจริง — สร้างตอนนี้ที่ยาและสัญญาณครบแล้ว */
+    S.refs.forEach(function (r) { if (!r.package) r.package = pkgV2(S, r.user_id); });
     (function flagship() {
       var m = { id: uuid(1, 41), pseudonym: "DEMO-41", display_name: "สาธิต บุญเรือน", phone: "0800000041", carer_phone: "0890000041",
         role: "user", birth_year_be: BE - 74, birth_month: 3, sex: "f", province: "เชียงใหม่", share_pool: true, username: null,
@@ -238,6 +288,8 @@
       med(11, m.id, "amlodipine", "ยาความดัน (สาธิต)", "antihtn", 1, "5 มก. เช้า");
       med(12, m.id, "metformin", "ยาเบาหวาน (สาธิต)", "none", 0, "500 มก. เช้า-เย็น");
       med(13, m.id, null, "ยาสมุนไพรตราสาธิต", "unknown", null, "1 แคปซูล");
+      /* ชุดข้อมูล ณ เวลาส่ง (วันที่ 2) — ยายังใช้อยู่ครบ 4 รายการ ก่อนแพทย์หยุด lorazepam ในวันที่ 38 */
+      var flagPkg = pkgV2(S, m.id);
       S.meds.forEach(function (x) { if (x.id === uuid(6, 10)) { x.active = false; x.reviewed_at = ago(24 * 6); x.reviewed_by = staffOf("doctor").id; x.review_note = "หยุดตามแผนแพทย์ ลดครึ่งหนึ่ง 2 สัปดาห์แล้วหยุด"; x.updated_at = ago(24 * 6); } });
       /* เคส — เปิดอัตโนมัติ ติดต่อได้ใน 20 ชั่วโมง ตอนนี้รับบริการครบ รอปิด */
       S.cases.push({ id: uuid(4, 41), user_id: m.id, risk_signal_id: uuid(3, 410), level: "decline", signals: k1.map(sig), status: "service_completed",
@@ -273,9 +325,35 @@
       RF.forEach(function (x) {
         S.refs.push({ id: uuid(5, x[1]), user_id: m.id, case_id: uuid(4, 41), risk_signal_id: uuid(3, 410), level: "decline", destination: x[0],
           action: x[6], sla: "ตามระดับความเร่งด่วน", reasons: S.signals[S.signals.length - 1].flags, questions: x[7], status: "outcome_recorded",
-          reply_due: iso(made + 48 * H), package: pkg(m), assigned_to: staffOf(x[0]).id, decided_by: null, decided_at: null, decision_note: null,
+          reply_due: iso(made + 48 * H), package: flagPkg, assigned_to: staffOf(x[0]).id, decided_by: null, decided_at: null, decision_note: null,
           acknowledged_at: iso(made + x[2] * H), booked_at: x[3] == null ? null : ago(x[3]), completed_at: ago(x[4]), completed_note: null,
           outcome: x[9], review: x[8], reviewed_at: ago(x[5]), created_at: iso(made) });
+      });
+      /* แบบฟอร์มตอบกลับตามวิชาชีพ (โครง CDC STEADI) ของเคสเดินเรื่อง */
+      var DEMO_FORM = {
+        pharmacist: { v: 2, dest: "pharmacist", verdict: "advised", urgency: "h72", follow_date: null, need_doctor: true,
+          factors: { fell: true, worried: true, unsteady: true, ortho: true, poly: true, high: true }, eval_gait: true,
+          problems: [{ med: "lorazepam", problem: "ยากลุ่มเสี่ยงสูงต่อการหกล้ม", recommend: "ทบทวนกับผู้สั่งใช้เรื่องลดขนาดหรือเปลี่ยนยา และเลี่ยงรับประทานกลางคืน" },
+                     { med: "amlodipine", problem: "เวลารับประทานเพิ่มความเสี่ยงกลางคืน", recommend: "ปรึกษาผู้สั่งใช้เรื่องเลื่อนเวลาเป็นเช้า" }],
+          educate: ["why", "timing", "watch", "rise"] },
+        doctor: { v: 2, dest: "doctor", verdict: "confirm", urgency: "h72", follow_date: null, need_doctor: null,
+          factors: { fell: true, worried: true, heart: false, cognitive: false, incont: false, depress: false, foot: false, other: false, psycho: true, opioid: false, sedate: true, hypot: true, tug12: true, chair: true, tandem: true, vision: null, ortho: true },
+          plan: ["eval", "medrev", "pt", "ot"], contra: false, pharm_response: [{ i: 0, response: "accept" }, { i: 1, response: "accept" }] },
+        physio: { v: 2, dest: "physio", verdict: "follow_up", urgency: "routine", follow_date: null, need_doctor: false,
+          obs: ["slow", "short", "wall"], tug_re: 13.8, chair30: 8, aid: "ไม้เท้า 4 ขา", balance_re: [10, 10, 6, null], goal: "เข้าห้องน้ำกลางคืนได้เองอย่างปลอดภัย",
+          programs: [{ name: "ฝึกทรงตัวและกำลังขาที่บ้าน (ชุดท่านั่ง-ยืน)", where: "ที่บ้าน มีลูกสาวอยู่ด้วย", when: "วันละ 15 นาที 5 วัน/สัปดาห์ · ไม่มีค่าใช้จ่าย" }],
+          caution: "ต้องมีคนอยู่ข้าง ๆ ทุกครั้งที่ฝึกยืนขาเดียว หยุดเมื่อเวียนศีรษะ" },
+        nurse: { v: 2, dest: "nurse", verdict: "advised", urgency: "h72", follow_date: null, need_doctor: false,
+          ortho: { lie: { s: 138, d: 82, hr: 72, sym: null }, s1: { s: 116, d: 76, hr: 84, sym: "หน้ามืดเล็กน้อย" }, s3: { s: 124, d: 78, hr: 80, sym: null }, abnormal: true },
+          symptoms: ["dizzy", "fear"], adl: { transfer: "indep", toilet: "super", walk: "indep", stairs: "assist" }, meds_admin: "helped",
+          home_fix: ["rail", "light", "wet"], hfhat: true, education: ["prevent", "help", "getup", "rise"], coord: ["doctor", "physio", "family"], contact: "visit" }
+      };
+      S.refs.filter(function (r) { return r.user_id === m.id && r.review && DEMO_FORM[r.destination]; }).forEach(function (r) {
+        var fm = {}; for (var k in DEMO_FORM[r.destination]) fm[k] = DEMO_FORM[r.destination][k];
+        fm.answered_at = r.reviewed_at; fm.answered_role = r.destination; r.review.form = fm;
+      });
+      S.refs.filter(function (r) { return r.user_id === m.id && r.destination === "doctor"; }).forEach(function (r) {
+        var p2 = {}; for (var k in flagPkg) p2[k] = flagPkg[k]; p2.pharm_recs = DEMO_FORM.pharmacist.problems; r.package = p2;
       });
       S.medrev.push({ id: uuid(7, 4), user_id: m.id, case_id: uuid(4, 41), referral_id: uuid(5, 7), requested_at: ago(24 * 42), reason: "ยา 4 รายการ มียากลุ่มเสี่ยงสูง 1 และระบุตัวไม่ได้ 1",
         summary: { high: 1, mod: 1, unknown: 1, total: 4 }, status: "done", reviewed_at: ago(24 * 37), reviewed_by: staffOf("pharmacist").id, outcome: "consult_doctor", recommend: RF[0][8].recommend });
@@ -446,14 +524,7 @@
     },
     previewPackage: function (userId) {
       var m = memberOf(userId); if (!m) return Promise.resolve(null);
-      var as = S.assess.filter(function (a) { return a.user_id === userId; }).sort(byTime("assessed_at"));
-      var f = as[0], l = as[as.length - 1];
-      return Promise.resolve({ built_at: iso(Date.now()), falls: l ? l.falls_detail : {}, mobility: l ? { ftsst_first: f.ftsst_seconds, ftsst_last: l.ftsst_seconds, tug_first: f.tug_seconds, tug_last: l.tug_seconds, first_at: f.assessed_at, last_at: l.assessed_at, n_assessments: as.length } : {},
-        medications: S.meds.filter(function (x) { return x.user_id === userId && x.active; }).map(function (x) { return { inn: x.inn, frid_group: x.frid_group, frid_level: x.frid_level, confirmed_by: x.confirmed_by }; }),
-        adl: l ? { first: f.parts.adl, last: l.parts.adl } : {}, home: l ? l.home_detail : {}, risk: l ? { tier: l.tier, score: l.score, max: 12 } : {},
-        open_followups: S.fups.filter(function (x) { return x.user_id === userId && x.status === "pending"; }).length,
-        open_referrals: S.refs.filter(function (x) { return x.user_id === userId && ["outcome_recorded", "declined"].indexOf(x.status) < 0; }).length,
-        consent: { assessment: true } });
+      return Promise.resolve(pkgV2(S, userId));
     },
     sendReferral: function (userId, caseId, dest, action, level, reasons, questions, replyHours) {
       if (!questions || !questions.length) return Promise.reject(new Error("ใบส่งต่อต้องมีคำถามอย่างน้อย 1 ข้อ"));
@@ -474,10 +545,15 @@
       r.assigned_to = ME.id; if (r.status === "pending") { r.status = "acknowledged"; r.acknowledged_at = iso(Date.now()); }
       audit("referral.claim", id, "รับเคสส่งต่อ"); return Promise.resolve(true);
     },
-    returnReview: function (rid, finding, recommend, nextStep, note) {
+    returnReview: function (rid, finding, recommend, nextStep, note, form) {
       var r = refById(rid); if (!r) return Promise.reject(new Error("ไม่พบรายการส่งต่อ"));
       if (!finding || !nextStep) return Promise.reject(new Error("ต้องมีข้อค้นพบและขั้นตอนถัดไป"));
-      r.status = "review_returned"; r.review = { finding: finding, recommend: recommend || null, next_step: nextStep, note: note || null }; r.reviewed_at = iso(Date.now()); r.assigned_to = r.assigned_to || ME.id;
+      /* กฎเดียวกับ return_review() ใน 22_referral_forms.sql */
+      if (form && form.verdict && ["confirm", "not_confirm", "need_more_info", "advised", "refer_other", "follow_up"].indexOf(form.verdict) < 0) return Promise.reject(new Error("คำตอบมาตรฐานไม่ถูกต้อง"));
+      if (/(ให้หยุดยา|หยุดยาทันที|เลิกยา)/.test(recommend || "")) return Promise.reject(new Error("คำแนะนำเรื่องยาให้ใช้ถ้อยคำว่า ทบทวนกับผู้สั่งใช้ — การปรับยาเป็นของผู้สั่งใช้"));
+      r.status = "review_returned"; r.review = { finding: finding, recommend: recommend || null, next_step: nextStep, note: note || null };
+      if (form) { var fm = {}; for (var k in form) fm[k] = form[k]; fm.answered_at = iso(Date.now()); fm.answered_role = ME.role; r.review.form = fm; }
+      r.reviewed_at = iso(Date.now()); r.assigned_to = r.assigned_to || ME.id;
       var c = r.case_id ? caseById(r.case_id) : null;
       if (c) { c.next_action = "ปรับแผนตามผลทบทวนของ" + (ROLE_NM[r.destination] || r.destination) + ": " + nextStep; c.updated_at = iso(Date.now()); }
       audit("referral.update", rid, "การส่งต่อเปลี่ยนสถานะเป็น review_returned"); return Promise.resolve(true);

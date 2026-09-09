@@ -134,6 +134,7 @@ footer{padding:20px 0 50px;font-size:12.5px;color:var(--ink3);text-align:center;
 
 <script src="./cs-backend.js?v=4"></script>
 <script src="./cs-demo.js"></script>
+<script src="./cs-referral-forms.js?v=1"></script>
 <script>
 (function () {
   /* หน้านี้มีความหมายเฉพาะในโหมดสาธิต — ถ้าเปิดมาโดยไม่มี ?demo ให้เติมให้เอง
@@ -193,6 +194,7 @@ footer{padding:20px 0 50px;font-size:12.5px;color:var(--ink3);text-align:center;
       '<div class="row"><span>คำแนะนำ</span><span>' + esc(v.recommend || "—") + '</span></div>' +
       '<div class="row"><span>ขั้นถัดไป</span><span><b>' + esc(NEXT[v.next_step] || v.next_step || "—") + '</b></span></div>' +
       (v.note ? '<div class="row"><span>หมายเหตุ</span><span>' + esc(v.note) + '</span></div>' : "") +
+      (v.form && window.CSReferralForms ? '<div class="row"><span>แบบฟอร์ม</span><span>' + esc(CSReferralForms.L.verdict[v.form.verdict] || "") + CSReferralForms.moduleSummaryHTML(r, false) + '</span></div>' : "") +
       (r.outcome ? '<div class="row"><span>ผลหลังรับบริการ</span><span>' + esc({ improved: "ดีขึ้น", same: "เท่าเดิม", worse: "แย่ลง" }[r.outcome.result] || r.outcome.result) + (r.outcome.note ? ' — ' + esc(r.outcome.note) : "") + '</span></div>' : "") +
       '</div>';
   }
